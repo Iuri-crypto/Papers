@@ -1,0 +1,9 @@
+py-dss-interface
+polars
+pandas
+numpy
+rich
+xlsxwriter
+pyarrow
+pyswarms
+
