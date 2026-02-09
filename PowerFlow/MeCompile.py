@@ -20,7 +20,7 @@ def main():
     # 1. List de Diretórios dos arquivos DSS
     DssFilesDir = MyClassDss.DirsAllDss(DirBase=config.DirBase,
                                         mes_index=config.MesIndex,
-                                        Resimular=False)
+                                        Resimular=True)
     
     # 2. Inicializar os componentes  
     monitor = SimulationMonitor(num_workers=config.NumWorkers)

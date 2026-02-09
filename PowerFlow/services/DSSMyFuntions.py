@@ -4,9 +4,11 @@ import polars as pl
 from pathlib import Path
 import numpy as np
 import gc
+import pandas as pd
 from services.Optimizer import Optimizer
-
+from services.ClassPlot import Plot
 class MyClassDss:
+    
     
     @staticmethod       
     def RunFeeder(args: tuple) -> None:
@@ -89,6 +91,9 @@ class MyClassDss:
         IndicesOtimizaVColeta = MyClassDss.ExtraiIndices(dss=dss, ColetarVTodasBarras=ColetarVTodasBarras)
         
         
+        
+        AcharCentroideAlimentador = True
+        BarrasCentroide = {}
         # LOOP
         for i in range(PontosASimular):
             [SumKwCargas,
@@ -149,32 +154,39 @@ class MyClassDss:
             QKvar.append(-1 * round(dss.circuit.total_power[1], 3))        
             Losskw.append(round(dss.circuit.line_losses[0], 3))
             #LossK2_verificar = dss.circuit.losses[0]
-            
-            
-            # Otimizações ======================================================
-            if Otimizar:
 
-                Optimizer.ExecutarOtimizacao(dss=dss,
-                                                Maxiterations=Maxiterations,
-                                                MaxControliterations=MaxControliterations, 
-                                                AlowForms=AlowForms,
-                                                SolutionMode=SolutionMode,
-                                                PsoOtimizar=PsoOtimizar,
-                                                TipoOtimizar=TipoOtimizar,
-                                                Restricao1=Restricao1,
-                                                Restricao2=Restricao2,
-                                                Restricao3=Restricao3,
-                                                Restricao4=Restricao4,
-                                                IncrementoPercentKwUfvs=IncrementoPercentKwUfvs,
-                                                Pkw=Pkw,
-                                                SimulPoint=i,
-                                                MesIndex=MesIndex, 
-                                                MmgdMult=MmgdMult, 
-                                                FatorCapacidadeMmgd=FatorCapacidadeMmgd,
-                                                SumKwCargas=SumKwCargas,
-                                                SumKwPchs=SumKwPchs
-                                                )
-            #===================================================================
+            if AcharCentroideAlimentador:
+                try:
+                    BarrasCentroide = MyClassDss.AcharCentroide(Feeder_Path=os.path.dirname(CaminhoDss), dss=dss)
+                except Exception as e:
+                    print("erro")
+                AcharCentroideAlimentador = False
+                        
+            
+            # # Otimizações ======================================================
+            # if Otimizar:
+
+            #     Optimizer.ExecutarOtimizacao(dss=dss,
+            #                                     Maxiterations=Maxiterations,
+            #                                     MaxControliterations=MaxControliterations, 
+            #                                     AlowForms=AlowForms,
+            #                                     SolutionMode=SolutionMode,
+            #                                     PsoOtimizar=PsoOtimizar,
+            #                                     TipoOtimizar=TipoOtimizar,
+            #                                     Restricao1=Restricao1,
+            #                                     Restricao2=Restricao2,
+            #                                     Restricao3=Restricao3,
+            #                                     Restricao4=Restricao4,
+            #                                     IncrementoPercentKwUfvs=IncrementoPercentKwUfvs,
+            #                                     Pkw=Pkw,
+            #                                     SimulPoint=i,
+            #                                     MesIndex=MesIndex, 
+            #                                     MmgdMult=MmgdMult, 
+            #                                     FatorCapacidadeMmgd=FatorCapacidadeMmgd,
+            #                                     SumKwCargas=SumKwCargas,
+            #                                     SumKwPchs=SumKwPchs
+            #                                     )
+            # #===================================================================
             
             
             DfVAngBusFase = MyClassDss.ExtrairVAngBuses(dss=dss, 
@@ -243,6 +255,66 @@ class MyClassDss:
         del DfHistVAngBusFase, DfHistIAngRamosFase, DadosRamo, DadosBarra, DfBalanco
         del dss
         gc.collect()
+
+
+    @staticmethod
+    def AcharCentroide(Feeder_Path: str, dss: Any) -> dict:
+        diretorio_base = os.path.dirname(Feeder_Path) if Feeder_Path.endswith('.dss') else Feeder_Path
+        
+        arquivo_coords = os.path.join(diretorio_base, 'coords_ctmt.feather')
+        CordenadasAlimentadorPlotar = os.path.join(diretorio_base, 'CoordsFormatoPlot.feather')
+        SeCoordenadasPlotar = os.path.join(diretorio_base, 'coords_sub.feather')
+
+        if not os.path.exists(arquivo_coords):
+            return None
+
+        # 1. Carrega dados
+        df_nos = pd.read_feather(arquivo_coords)
+        df_nos['pac'] = df_nos['pac'].astype(str).str.lower()
+        
+        df_trechos = pd.read_feather(CordenadasAlimentadorPlotar) 
+        df_sub = pd.read_feather(SeCoordenadasPlotar) 
+
+        # 2. Coleta de Cargas do OpenDSS
+        cargas_por_barra = {}
+        dss.loads.first()
+        for _ in range(dss.loads.count):
+            bus_raw = dss.cktelement.bus_names[0]
+            bus_limpo = bus_raw.split(".")[0].lower() 
+            kw = dss.loads.kw
+            
+            cargas_por_barra[bus_limpo] = cargas_por_barra.get(bus_limpo, 0) + kw
+            dss.loads.next()
+
+        # 3. Mapeia kW para o dataframe de nós
+        df_nos['kw'] = df_nos['pac'].map(cargas_por_barra).fillna(0)
+
+        total_kw = df_nos['kw'].sum()
+        if total_kw == 0:
+            return {"lat": 0, "lon": 0, "total_kw": 0, "barra_proxima": None}
+
+        # 4. Cálculo do Centroide
+        lat_cc = (df_nos['lat'] * df_nos['kw']).sum() / total_kw
+        lon_cc = (df_nos['lon'] * df_nos['kw']).sum() / total_kw
+
+        distancias = np.sqrt((df_nos['lat'] - lat_cc)**2 + (df_nos['lon'] - lon_cc)**2)
+        barra_proxima = df_nos.loc[distancias.idxmin(), 'pac']
+
+        DictRetorno = {
+            "lat": lat_cc, "lon": lon_cc,
+            "total_kw": total_kw,
+            "barra_proxima": barra_proxima,
+            "distancia_centroide": distancias.min()
+        }
+
+        # CHAMADA DO PLOT: Passamos df_nos para o calor e df_trechos para as linhas
+        Plot.MapCentroid(df_nos=df_nos,
+                          df_trechos=df_trechos,
+                            df_sub=df_sub,
+                              DictRetorno=DictRetorno,
+                              feederPath=Feeder_Path)
+
+        return DictRetorno
 
     @staticmethod
     def DirsAllDss(DirBase: str,

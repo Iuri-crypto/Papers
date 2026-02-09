@@ -28,7 +28,7 @@ class SimConfig:
     MaxControliterations: int = 50
     AlowForms: int = 0
     SolutionMode: int = 0
-    PontosASimular: int = 288
+    PontosASimular: int = 1
     FatorCapacidadeMmgd: float = 0.24
     AtivarIrrigantes: bool = False
     
