@@ -4,9 +4,14 @@ import polars as pl
 from pathlib import Path
 import numpy as np
 import gc
+import networkx as nx
+from scipy.spatial import cKDTree
 import pandas as pd
 from services.Optimizer import Optimizer
 from services.ClassPlot import Plot
+import ast
+from geopy.distance import geodesic
+
 class MyClassDss:
     
     
@@ -257,6 +262,7 @@ class MyClassDss:
         gc.collect()
 
 
+   
     @staticmethod
     def AcharCentroide(Feeder_Path: str, dss: Any) -> dict:
         diretorio_base = os.path.dirname(Feeder_Path) if Feeder_Path.endswith('.dss') else Feeder_Path
@@ -300,21 +306,127 @@ class MyClassDss:
         distancias = np.sqrt((df_nos['lat'] - lat_cc)**2 + (df_nos['lon'] - lon_cc)**2)
         barra_proxima = df_nos.loc[distancias.idxmin(), 'pac']
 
+
+        G = MyClassDss.montar_grafo_conectado(df_nos, df_trechos)
+        caminho_vermelho = MyClassDss.identificar_caminho_tronco(G, df_nos, df_sub, barra_proxima)
+
+        # IDENTIFICAÇÃO DO RAMO 5/6
+        ramo_especifico, d_total = MyClassDss.identificar_ramo_5_6(G, df_nos, caminho_vermelho)
+
         DictRetorno = {
             "lat": lat_cc, "lon": lon_cc,
             "total_kw": total_kw,
             "barra_proxima": barra_proxima,
-            "distancia_centroide": distancias.min()
+            "distancia_centroide": distancias.min(),
+            "pacs_tronco": caminho_vermelho,
+            "distancia_total_caminho": d_total,
+            "ramo_5_6": (ramo_especifico['pac_1'], ramo_especifico['pac_2']) 
         }
 
-        # CHAMADA DO PLOT: Passamos df_nos para o calor e df_trechos para as linhas
-        Plot.MapCentroid(df_nos=df_nos,
-                          df_trechos=df_trechos,
-                            df_sub=df_sub,
-                              DictRetorno=DictRetorno,
-                              feederPath=Feeder_Path)
+        # CHAMADAS DOS PLOTS
+        Plot.MapCentroid(df_nos=df_nos, df_trechos=df_trechos, df_sub=df_sub, 
+                         DictRetorno=DictRetorno, feederPath=Feeder_Path)
+
+        Plot.PlotCaminhoVermelho(df_nos=df_nos, df_trechos=df_trechos, 
+                                 DictRetorno=DictRetorno, feederPath=Feeder_Path)
 
         return DictRetorno
+
+
+
+    @staticmethod
+    def montar_grafo_conectado(df_nos, df_trechos):
+        """
+        Monta o grafo garantindo conectividade total sem gaps, 
+        unindo todos os componentes isolados.
+        """
+        G = nx.Graph()
+        
+        # 1. Adiciona arestas dos trechos conhecidos
+        for _, row in df_trechos.iterrows():
+            p1, p2 = str(row['pac_1']).lower(), str(row['pac_2']).lower()
+            G.add_edge(p1, p2)
+
+        # 2. Garante que todos os PACs existam como nós
+        for pac in df_nos['pac']:
+            if not G.has_node(pac):
+                G.add_node(pac)
+
+        # 3. Conexão Robusta de Componentes (Gaps)
+        # Enquanto o grafo não for um bloco único, conectamos as "ilhas"
+        while not nx.is_connected(G):
+            componentes = list(nx.connected_components(G))
+            # Ordenamos para sempre conectar a menor ilha ao restante do sistema
+            componentes.sort(key=len)
+            
+            comp_isolado = list(componentes[0]) # Menor ilha
+            # Todos os outros nós que NÃO estão nessa ilha
+            outros_nos = set(G.nodes()) - set(comp_isolado)
+            
+            df_isolado = df_nos[df_nos['pac'].isin(comp_isolado)]
+            df_resto = df_nos[df_nos['pac'].isin(outros_nos)]
+            
+            # KDTree para encontrar a conexão mais curta possível entre esta ilha e o resto
+            tree = cKDTree(df_resto[['lat', 'lon']].values)
+            dist, idx = tree.query(df_isolado[['lat', 'lon']].values)
+            
+            # Encontra o par de nós (um da ilha, um do resto) com a menor distância absoluta
+            melhor_par_idx = dist.argmin()
+            pac_origem = df_isolado.iloc[melhor_par_idx]['pac']
+            pac_destino = df_resto.iloc[idx[melhor_par_idx]]['pac']
+            
+            # Criamos a "ponte" para fechar o gap
+            G.add_edge(pac_origem, pac_destino, weight=dist[melhor_par_idx])
+            #print(f"[Gap Fix] Conectando ilha isolada: {pac_origem} -> {pac_destino}")
+
+        return G
+    
+
+    @staticmethod
+    def identificar_ramo_5_6(G, df_nos, caminho_pacs):
+        """
+        Calcula a distância total do caminho e identifica o ramo (pac_1, pac_2)
+        localizado a aproximadamente 5/6 do percurso saindo da subestação.
+        """
+        dist_total = 0
+        acumulado = []
+
+        # 1. Percorre o caminho calculando a distância euclidiana entre cada PAC
+        for i in range(len(caminho_pacs) - 1):
+            u, v = caminho_pacs[i], caminho_pacs[i+1]
+            n1 = df_nos[df_nos['pac'] == u].iloc[0]
+            n2 = df_nos[df_nos['pac'] == v].iloc[0]
+            
+            # Distância entre barras (aproximada por Pitágoras para coordenadas)
+            d = np.sqrt((n1['lat'] - n2['lat'])**2 + (n1['lon'] - n2['lon'])**2)
+            dist_total += d
+            acumulado.append({'pac_1': u, 'pac_2': v, 'dist_fim': dist_total})
+
+        # 2. Define o alvo de 5/6 da distância total
+        alvo_dist = dist_total * (5/6)
+        
+        # 3. Localiza o ramo específico onde o alvo se encontra
+        ramo_selecionado = acumulado[0]
+        for trecho in acumulado:
+            if trecho['dist_fim'] >= alvo_dist:
+                ramo_selecionado = trecho
+                break
+        
+        return ramo_selecionado, dist_total
+
+
+
+    @staticmethod
+    def identificar_caminho_tronco(G, df_nos, df_sub, barra_destino):
+        """Encontra o caminho da subestação até a barra alvo."""
+        coords_ext = df_sub['coord_latlon'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
+        lat_s, lon_s = coords_ext.apply(lambda x: x[0]).mean(), coords_ext.apply(lambda x: x[1]).mean()
+        
+        dist_se = np.sqrt((df_nos['lat'] - lat_s)**2 + (df_nos['lon'] - lon_s)**2)
+        pac_se = df_nos.loc[dist_se.idxmin(), 'pac']
+        return nx.shortest_path(G, source=pac_se, target=barra_destino)
+
+    
 
     @staticmethod
     def DirsAllDss(DirBase: str,

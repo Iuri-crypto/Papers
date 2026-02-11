@@ -279,3 +279,138 @@ class Plot:
         plt.legend(loc='upper right')
         plt.savefig(os.path.join(save_dir, "3_foco_tecnico_barra.png"), dpi=300)
         plt.close()
+
+    
+
+
+    # @staticmethod
+    # def PlotCaminhoVermelho(df_nos: pd.DataFrame, 
+    #                         df_trechos: pd.DataFrame, 
+    #                         DictRetorno: dict, 
+    #                         feederPath: str):
+    #     """Plota a rede em preto e o caminho específico em vermelho, salvando no diretório do alimentador."""
+        
+    #     # 1. Configuração de diretório (Identêntico ao MapCentroid)
+    #     nome_alimentador = os.path.basename(os.path.dirname(feederPath))
+    #     caminho_script = os.path.dirname(os.path.abspath(__file__))
+    #     raiz_projeto = os.path.dirname(caminho_script)
+    #     save_dir = os.path.join(raiz_projeto, "images", str(nome_alimentador), "centroide")
+    #     os.makedirs(save_dir, exist_ok=True)
+
+    #     plt.figure(figsize=(12, 10))
+    #     tronco_set = set(DictRetorno['pacs_tronco'])
+        
+    #     # 2. Desenho da Rede com Destaque
+    #     for _, row in df_trechos.iterrows():
+    #         p1, p2 = str(row['pac_1']).lower(), str(row['pac_2']).lower()
+    #         n1 = df_nos[df_nos['pac'] == p1]
+    #         n2 = df_nos[df_nos['pac'] == p2]
+            
+    #         if not n1.empty and not n2.empty:
+    #             is_tronco = False
+    #             if p1 in tronco_set and p2 in tronco_set:
+    #                 # Verifica adjacência na lista para garantir continuidade do traço
+    #                 idx1, idx2 = DictRetorno['pacs_tronco'].index(p1), DictRetorno['pacs_tronco'].index(p2)
+    #                 if abs(idx1 - idx2) == 1: 
+    #                     is_tronco = True
+                
+    #             plt.plot([n1['lon'].values[0], n2['lon'].values[0]], 
+    #                      [n1['lat'].values[0], n2['lat'].values[0]], 
+    #                      color='red' if is_tronco else 'black', 
+    #                      linewidth=2.5 if is_tronco else 0.6,
+    #                      alpha=1.0 if is_tronco else 0.2,
+    #                      zorder=10 if is_tronco else 1)
+
+    #     # 3. Elementos de Referência
+    #     plt.scatter(DictRetorno['lon'], DictRetorno['lat'], color='blue', s=100, 
+    #                 marker='X', label='Centroide Teórico', zorder=15, edgecolors='white')
+        
+    #     # Barra física destino
+    #     barra_alvo = df_nos[df_nos['pac'] == DictRetorno['barra_proxima']]
+    #     if not barra_alvo.empty:
+    #         plt.scatter(barra_alvo['lon'].iloc[0], barra_alvo['lat'].iloc[0], 
+    #                     color='lime', s=100, label='Barra Alvo (Tronco)', zorder=16, edgecolors='black')
+
+    #     plt.title(f"4. Caminho Subestação -> Centroide: {nome_alimentador}")
+    #     plt.xlabel("Longitude")
+    #     plt.ylabel("Latitude")
+    #     plt.legend(loc='upper right')
+    #     plt.grid(True, linestyle='--', alpha=0.5)
+
+    #     # 4. Salvamento
+    #     save_path = os.path.join(save_dir, "4_caminho_tronco_vermelho.png")
+    #     plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    #     plt.close()
+    #     print(f"Plot do tronco salvo em: {save_path}")
+
+
+
+    @staticmethod
+    def PlotCaminhoVermelho(df_nos: pd.DataFrame, 
+                            df_trechos: pd.DataFrame, 
+                            DictRetorno: dict, 
+                            feederPath: str):
+        """Plota a rede em preto, o caminho em vermelho e destaca o ramo 5/6 em amarelo."""
+        
+        # 1. Configuração de diretório
+        nome_alimentador = os.path.basename(os.path.dirname(feederPath))
+        caminho_script = os.path.dirname(os.path.abspath(__file__))
+        raiz_projeto = os.path.dirname(caminho_script)
+        save_dir = os.path.join(raiz_projeto, "images", str(nome_alimentador), "centroide")
+        os.makedirs(save_dir, exist_ok=True)
+
+        plt.figure(figsize=(12, 10))
+        tronco_set = set(DictRetorno['pacs_tronco'])
+        
+        # Obtém os nomes das barras do ramo 5/6 para comparação
+        r56_p1, r56_p2 = DictRetorno.get('ramo_5_6', (None, None))
+
+        # 2. Desenho da Rede com Destaques Camadeados
+        for _, row in df_trechos.iterrows():
+            p1, p2 = str(row['pac_1']).lower(), str(row['pac_2']).lower()
+            n1 = df_nos[df_nos['pac'] == p1]
+            n2 = df_nos[df_nos['pac'] == p2]
+            
+            if not n1.empty and not n2.empty:
+                # Lógica de prioridade de cor/estilo
+                cor, largura, alpha, z = 'black', 0.6, 0.2, 1
+                
+                # Verifica se faz parte do tronco (caminho vermelho)
+                if p1 in tronco_set and p2 in tronco_set:
+                    idx1, idx2 = DictRetorno['pacs_tronco'].index(p1), DictRetorno['pacs_tronco'].index(p2)
+                    if abs(idx1 - idx2) == 1: 
+                        cor, largura, alpha, z = 'red', 2.5, 1.0, 10
+                
+                # Verifica se é especificamente o Ramo 5/6 (Destaque máximo)
+                if r56_p1 and r56_p2:
+                    if (p1 == r56_p1 and p2 == r56_p2) or (p1 == r56_p2 and p2 == r56_p1):
+                        cor, largura, alpha, z = 'yellow', 5.0, 1.0, 20
+
+                plt.plot([n1['lon'].values[0], n2['lon'].values[0]], 
+                         [n1['lat'].values[0], n2['lat'].values[0]], 
+                         color=cor, linewidth=largura, alpha=alpha, zorder=z)
+
+        # 3. Elementos de Referência
+        plt.scatter(DictRetorno['lon'], DictRetorno['lat'], color='blue', s=100, 
+                    marker='X', label='Centroide Teórico', zorder=15, edgecolors='white')
+        
+        # Barra física destino (Centroide Próximo)
+        barra_alvo = df_nos[df_nos['pac'] == DictRetorno['barra_proxima']]
+        if not barra_alvo.empty:
+            plt.scatter(barra_alvo['lon'].iloc[0], barra_alvo['lat'].iloc[0], 
+                        color='lime', s=100, label='Barra Alvo (Tronco)', zorder=16, edgecolors='black')
+
+        # Legenda auxiliar para o Ramo 5/6
+        plt.plot([], [], color='yellow', linewidth=5, label='Ramo 5/6 (Local Instalação)')
+
+        plt.title(f"4. Caminho Subestação -> Centroide: {nome_alimentador}")
+        plt.xlabel("Longitude")
+        plt.ylabel("Latitude")
+        plt.legend(loc='upper right')
+        plt.grid(True, linestyle='--', alpha=0.5)
+
+        # 4. Salvamento
+        save_path = os.path.join(save_dir, "4_caminho_tronco_vermelho.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Plot do tronco com destaque 5/6 salvo em: {save_path}")
