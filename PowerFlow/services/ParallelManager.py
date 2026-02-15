@@ -57,8 +57,23 @@ class ParallelManager:
                     self.cfg.Restricao2,
                     self.cfg.Restricao3,
                     self.cfg.Restricao4,
-                    self.cfg.IncrementoPercentKwUfvs
+                    self.cfg.IncrementoPercentKwUfvs,
+                    self.cfg.TapMaxAVR,
+                    self.cfg.TapMinAVR,
+                    self.cfg.QuantidadeAVR,
+                    self.cfg.DistAVR,
+                    self.cfg.xhl,
+                    self.cfg.LoadLoss,
+                    self.cfg.r,
+                    self.cfg.x,
+                    self.cfg.ptratio,
+                    self.cfg.band,
+                    self.cfg.QuantidadeBkShunt,
+                    self.cfg.DistBkShunt,
+                    self.cfg.Numsteps,
+                    self.cfg.FatorPotenciaAlvo
                 )
+                
                 
                 for IndexFeeder, CaminhoDss in enumerate(arquivosDSS)]
             

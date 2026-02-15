@@ -55,3 +55,26 @@ class SimConfig:
     TapMinOltc = 0.9
     TapMaxOlts = 1.1
     
+    # Infos Reguladores de Tensão
+    #================================
+    TapMaxAVR = 1.1
+    TapMinAVR = 0.9
+    QuantidadeAVR = 2
+    DistAVR = [9/10, 5/10] # Distância do Regulador  em relação a subestação até o baricentro de carga
+    xhl = 1
+    LoadLoss = 0.5
+    r = 0.001
+    x = 0.001
+    ptratio = 15
+    band = 20
+    #================================
+    
+    # Infos Bancos de Capacitores
+    #================================
+    QuantidadeBkShunt = 2
+    DistBkShunt = [7/10, 3/10] # Distância do Banco de Capacitor  em relação a subestação até o baricentro de carga
+    Numsteps = 8
+    FatorPotenciaAlvo = 0.96
+    #================================
+
+    

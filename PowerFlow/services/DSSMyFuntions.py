@@ -11,6 +11,7 @@ from services.Optimizer import Optimizer
 from services.ClassPlot import Plot
 import ast
 from geopy.distance import geodesic
+import math
 
 class MyClassDss:
     
@@ -55,13 +56,31 @@ class MyClassDss:
         Restricao2,
         Restricao3,
         Restricao4,
-        IncrementoPercentKwUfvs
+        IncrementoPercentKwUfvs,
+        TapMaxAVR,
+        TapMinAVR,
+        QuantidadeAVR,
+        DistAVR,
+        xhl,
+        LoadLoss,
+        r,
+        x,
+        ptratio,
+        band,
+        QuantidadeBkShunt,
+        DistBkShunt,
+        Numsteps,
+        FatorPotenciaAlvo
+                    
         ) = args
         
         # Importar dentro da Função 
         # paralelizada
         import py_dss_interface
         dss = py_dss_interface.DSS()
+        
+        
+        
         
         
         # Compila + Configurações
@@ -162,7 +181,41 @@ class MyClassDss:
 
             if AcharCentroideAlimentador:
                 try:
-                    BarrasCentroide = MyClassDss.AcharCentroide(Feeder_Path=os.path.dirname(CaminhoDss), dss=dss)
+                    BarrasCentroide = MyClassDss.AcharCentroide(Feeder_Path=os.path.dirname(CaminhoDss),
+                                                                dss=dss,
+                                                                QuantidadeAVR=QuantidadeAVR,
+                                                                DistAVR=DistAVR,
+                                                                QuantidadeBkShunt=QuantidadeBkShunt,
+                                                                DistBkShunt=DistBkShunt,
+                                                                Numsteps=Numsteps)
+                    
+                    InfoReguladores = MyClassDss.DimensionarKVAReguladoresTensao(Dict=BarrasCentroide,
+                                                                QuantidadeAVR=QuantidadeAVR,
+                                                                TapMaxAVR=TapMaxAVR,
+                                                                TapMinAVR=TapMinAVR,
+                                                                xhl=xhl,
+                                                                LoadLoss=LoadLoss,
+                                                                r=r,
+                                                                x=x,
+                                                                ptratio=ptratio,
+                                                                band=band,
+                                                                dss=dss)
+                    
+                    InfoCapacitores = MyClassDss.DimensionarKVABancosCapacitores(Dict=BarrasCentroide, 
+                                                                QuantidadeBkShunt=QuantidadeBkShunt,
+                                                                Numsteps=Numsteps,
+                                                                FatorPotenciaAlvo=FatorPotenciaAlvo,
+                                                                dss=dss)
+                    
+                    MyClassDss.InserirNovosReguladoresTensao(InfoReguladorTensaoAInstalar=InfoReguladores,
+                                                                dss=dss)
+                    
+                    MyClassDss.InserirNovosBancosCapacitor(InfoBancosDeCapacitorAInstalar=InfoCapacitores,
+                                                                dss=dss)
+                    
+                    
+                    
+                    
                 except Exception as e:
                     print("erro")
                 AcharCentroideAlimentador = False
@@ -264,7 +317,14 @@ class MyClassDss:
 
    
     @staticmethod
-    def AcharCentroide(Feeder_Path: str, dss: Any) -> dict:
+    def AcharCentroide(Feeder_Path: str,
+                       dss: Any,
+                       QuantidadeAVR: int,
+                       DistAVR: list,
+                       QuantidadeBkShunt: int,
+                       DistBkShunt: list,
+                       Numsteps: int) -> dict:
+        
         diretorio_base = os.path.dirname(Feeder_Path) if Feeder_Path.endswith('.dss') else Feeder_Path
         
         arquivo_coords = os.path.join(diretorio_base, 'coords_ctmt.feather')
@@ -310,29 +370,66 @@ class MyClassDss:
         G = MyClassDss.montar_grafo_conectado(df_nos, df_trechos)
         caminho_vermelho = MyClassDss.identificar_caminho_tronco(G, df_nos, df_sub, barra_proxima)
 
-        # IDENTIFICAÇÃO DO RAMO 5/6
-        ramo_especifico, d_total = MyClassDss.identificar_ramo_5_6(G, df_nos, caminho_vermelho)
+        distanciasAVRs = []
+        distanciasBkShunt = []
+        pacs1AVR = []
+        pacs2AVR = []
+        pacs1BkShunt = []
+        pacs2BkShunt = []
+        barras_reguladores = [] 
+        barras_Capacitores = []
+
+        for i in range(QuantidadeAVR):
+            Distancia = DistAVR[i]
+            ramo_especifico, d_total = MyClassDss.identificar_ramo(G,
+                                                                   df_nos,
+                                                                   caminho_vermelho,
+                                                                   Distancia)
+            
+            distanciasAVRs.append(d_total)
+            pacs1AVR.append(ramo_especifico['pac_1'].lower())
+            pacs2AVR.append(ramo_especifico['pac_2'].lower())
+            barras_reguladores.append(ramo_especifico['pac_2'])
+        
+        
+        for i in range(QuantidadeBkShunt):
+            Distancia = DistBkShunt[i]
+            ramo_especifico, d_total = MyClassDss.identificar_ramo(G,
+                                                                   df_nos,
+                                                                   caminho_vermelho,
+                                                                   Distancia)
+            
+            distanciasBkShunt.append(d_total)
+            pacs1BkShunt.append(ramo_especifico['pac_1'].lower())
+            pacs2BkShunt.append(ramo_especifico['pac_2'].lower())
+            barras_Capacitores.append(ramo_especifico['pac_2'])
 
         DictRetorno = {
             "lat": lat_cc, "lon": lon_cc,
             "total_kw": total_kw,
-            "barra_proxima": barra_proxima,
+            "barra_reguladores": barras_reguladores, 
+            "barra_capacitores": barras_Capacitores,
             "distancia_centroide": distancias.min(),
             "pacs_tronco": caminho_vermelho,
-            "distancia_total_caminho": d_total,
-            "ramo_5_6": (ramo_especifico['pac_1'], ramo_especifico['pac_2']) 
+            "distanciaAVR": distanciasAVRs,
+            "distanciaBkshunt": distanciasBkShunt,
+            "ramo": (pacs1AVR, pacs2AVR, pacs1BkShunt, pacs2BkShunt) 
         }
 
-        # CHAMADAS DOS PLOTS
-        Plot.MapCentroid(df_nos=df_nos, df_trechos=df_trechos, df_sub=df_sub, 
-                         DictRetorno=DictRetorno, feederPath=Feeder_Path)
+        Plot.MapCentroid(df_nos=df_nos,
+                         df_trechos=df_trechos,
+                         df_sub=df_sub, 
+                         DictRetorno=DictRetorno,
+                         feederPath=Feeder_Path)
 
-        Plot.PlotCaminhoVermelho(df_nos=df_nos, df_trechos=df_trechos, 
-                                 DictRetorno=DictRetorno, feederPath=Feeder_Path)
+        Plot.PlotCaminhoVermelho(df_nos=df_nos,
+                                 df_trechos=df_trechos, 
+                                 DictRetorno=DictRetorno,
+                                 feederPath=Feeder_Path)
 
         return DictRetorno
 
-
+    
 
     @staticmethod
     def montar_grafo_conectado(df_nos, df_trechos):
@@ -383,7 +480,10 @@ class MyClassDss:
     
 
     @staticmethod
-    def identificar_ramo_5_6(G, df_nos, caminho_pacs):
+    def identificar_ramo(G,
+                         df_nos,
+                         caminho_pacs,
+                         Distancia):
         """
         Calcula a distância total do caminho e identifica o ramo (pac_1, pac_2)
         localizado a aproximadamente 5/6 do percurso saindo da subestação.
@@ -403,7 +503,7 @@ class MyClassDss:
             acumulado.append({'pac_1': u, 'pac_2': v, 'dist_fim': dist_total})
 
         # 2. Define o alvo de 5/6 da distância total
-        alvo_dist = dist_total * (5/6)
+        alvo_dist = dist_total * Distancia
         
         # 3. Localiza o ramo específico onde o alvo se encontra
         ramo_selecionado = acumulado[0]
@@ -427,6 +527,347 @@ class MyClassDss:
         return nx.shortest_path(G, source=pac_se, target=barra_destino)
 
     
+
+    @staticmethod
+    def DimensionarKVAReguladoresTensao(Dict: dict, 
+                                        QuantidadeAVR: int,
+                                        TapMaxAVR: float,
+                                        TapMinAVR: float,
+                                        xhl: float,
+                                        LoadLoss: float,
+                                        r: float,
+                                        x: float,
+                                        ptratio: float,
+                                        band: float,
+                                        dss: Any) -> dict:
+        
+
+        
+        [lista_p1_reg,
+         lista_p2_reg,
+         lista_p1_BkShunt,
+         lista_p2_BkShunt] = Dict.get('ramo', ([], [], [], []))
+        
+        kvSE = dss.vsources.base_kv
+        vreg = round(kvSE * 1000 / (np.sqrt(3) *ptratio), 3)
+        
+        correntes=[]
+        
+        NomeTransformador = []
+        NumFasesTransformador = []
+        Bank = []
+        MaxTap = []
+        MinTap = []
+        XHL = []
+        NomeReguladorTensao = []
+        R = []
+        Vreg = []
+        Ptratiolist = []
+        Bus1list = []
+        Bus2list = []
+        Connlist = []
+        KVFFBus1 = []
+        KVFFBus2 = []
+        KvasBus1 = []
+        KvasBus2 = []
+        bandlist = []
+        correntesATrifasico = []
+        LoadLosslist = []
+        numeroFases = []
+        
+        dss.lines.first()
+        for _ in range(dss.lines.count):
+            
+            bus1 = dss.lines.bus1
+            bus2 = dss.lines.bus2
+            NomeBarra1 = bus1.split(".")[0].lower()
+            NomeBarra2 = bus2.split(".")[0].lower()
+            
+            if NomeBarra1 in (lista_p1_reg + lista_p2_reg)\
+                and NomeBarra2 in (lista_p1_reg + lista_p2_reg):
+                    
+                num_fases = dss.cktelement.num_phases
+                numeroFases.append(num_fases)
+                c_raw = dss.cktelement.currents_mag_ang
+                for i in range(num_fases):
+                    correntes.append(c_raw[i * 2])   
+                
+                correntesATrifasico.append(sum(correntes))
+                correntes.clear()
+                dss.cktelement.enabled(0) 
+                dss.lines.next()
+            else:
+                dss.lines.next()
+            
+            
+        
+        for i in range(QuantidadeAVR):
+            
+            Bus1 = lista_p1_reg[i]
+            Bus2 = lista_p2_reg[i]
+            
+            PotenciaPassante = math.sqrt(3) * kvSE * correntesATrifasico[i] 
+            PerctAddicional = 0.08
+            perctKVA = abs(TapMaxAVR - 1) + PerctAddicional
+            PotenciaNominalKVA = round(PotenciaPassante * perctKVA, 3)
+            
+        
+            NomeTransformador.append(f"Transformador_Regulador_{i+1}")
+            NumFasesTransformador.append(numeroFases[i])
+            Bank.append(f"Transformador_Regulador_{i+1}")
+            MaxTap.append(TapMaxAVR)
+            MinTap.append(TapMinAVR)
+            XHL.append(xhl)
+            LoadLosslist.append(LoadLoss)
+            NomeReguladorTensao.append(f"Transformador_Regulador_{i+1}")
+            R.append(r)
+            Vreg.append(vreg)
+            Ptratiolist.append(ptratio)
+            Bus1list.append(Bus1)
+            Bus2list.append(Bus2)
+            Connlist.append("wye")
+            KVFFBus1.append(kvSE)
+            KVFFBus2.append(kvSE)
+            KvasBus1.append(PotenciaNominalKVA)
+            KvasBus2.append(PotenciaNominalKVA)
+            bandlist.append(band)
+        
+        InfoReguladorTensaoAInstalar = {
+                "NomeTransformador": NomeTransformador,
+                "NumFasesTransformador": NumFasesTransformador,
+                "Bank": Bank,
+                "MaxTap": MaxTap,
+                "MinTap": MinTap,
+                "XHL": XHL,
+                "LoadLoss": LoadLosslist,
+                "NomeReguladorTensao": NomeReguladorTensao,
+                "R": R,
+                "Vreg": Vreg,
+                "Ptratio": Ptratiolist,
+                "Bus1": Bus1list,
+                "Bus2": Bus2list,
+                "Conn": Connlist,
+                "KVFFBus1": KVFFBus1,
+                "KVFFBus2": KVFFBus2,
+                "KvasBus1": KvasBus1,
+                "KvasBus2": KvasBus2,
+                "band": bandlist
+        }
+
+        return InfoReguladorTensaoAInstalar
+    
+    
+    @staticmethod
+    def InserirNovosReguladoresTensao(InfoReguladorTensaoAInstalar: dict,
+                                      dss: Any) -> None:
+        
+        NomeTransformador = InfoReguladorTensaoAInstalar["NomeTransformador"]
+        NumFasesTransformador = InfoReguladorTensaoAInstalar["NumFasesTransformador"]
+        Bank = InfoReguladorTensaoAInstalar["Bank"]
+        MaxTap = InfoReguladorTensaoAInstalar["MaxTap"]
+        MinTap = InfoReguladorTensaoAInstalar["MinTap"]
+        XHL = InfoReguladorTensaoAInstalar["XHL"]
+        LoadLosslist = InfoReguladorTensaoAInstalar["LoadLoss"]
+        NomeReguladorTensao = InfoReguladorTensaoAInstalar["NomeReguladorTensao"]
+        R = InfoReguladorTensaoAInstalar["R"]
+        Vreg = InfoReguladorTensaoAInstalar["Vreg"]
+        Ptratiolist = InfoReguladorTensaoAInstalar["Ptratio"]
+        Bus1list = InfoReguladorTensaoAInstalar["Bus1"]
+        Bus2list = InfoReguladorTensaoAInstalar["Bus2"]
+        Connlist = InfoReguladorTensaoAInstalar["Conn"]
+        KVFFBus1 = InfoReguladorTensaoAInstalar["KVFFBus1"]
+        KVFFBus2 = InfoReguladorTensaoAInstalar["KVFFBus2"]
+        KvasBus1 = InfoReguladorTensaoAInstalar["KvasBus1"]
+        KvasBus2 = InfoReguladorTensaoAInstalar["KvasBus2"]
+        bandlist = InfoReguladorTensaoAInstalar["band"]
+        
+        for i in range(len(InfoReguladorTensaoAInstalar["NomeTransformador"])):
+            
+            dss.text(f" New transformer.{NomeTransformador[i]} phases={NumFasesTransformador[i]} windings=2 bank={NomeTransformador[i]} ")
+            dss.text(f"Maxtap={MaxTap[i]} Mintap={MinTap[i]} ppm=0 XHL={XHL[i]} %LoadLoss={LoadLosslist[i]} buses=({Bus1list[i]}.1.2.3.0 {Bus2list[i]}.1.2.3.0) ")
+            dss.text(f"conns='{Connlist[i]} {Connlist[i]}' kvs='{KVFFBus1[i]} {KVFFBus2[i]}' kvas='{KvasBus1[i]} {KvasBus2[i]}' ")
+            dss.text(f"New regcontrol.{NomeTransformador[i]} transformer={NomeTransformador[i]} winding=2 r={R[i]} x=0.00001 ")
+            dss.text(f"vreg={Vreg[i]} band={bandlist[i]} ptratio={Ptratiolist[i]} ctprim=22 ")
+            
+        
+           
+        
+        
+            
+            
+    @staticmethod
+    def DimensionarKVABancosCapacitores(Dict: dict, 
+                                        QuantidadeBkShunt: int,
+                                        Numsteps: int,
+                                        FatorPotenciaAlvo: float,
+                                        dss: Any) -> dict:
+        
+
+        
+        [lista_p1_reg,
+         lista_p2_reg,
+         lista_p1_BkShunt,
+         lista_p2_BkShunt] = Dict.get('ramo', ([], [], [], []))
+        
+        kvSE = dss.vsources.base_kv 
+        kvSEFn = kvSE / np.sqrt(3)       
+        correntes=[]
+        angulos=[]
+    
+        Bus1list = []
+        Bus2list = []
+        Connlist = []
+        KVFFBus1 = []
+        KVFFBus2 = []
+        KvasBus1 = []
+        KvasBus2 = []
+        correntesATrifasico = []
+        angulosTrifasico = []
+        NomeLinha = []
+        NumFasesLinha = []
+        switch = []
+        NomeCapacitor = []
+        NumstepsList = []
+        NomeCapcontrol = []
+        onsetting = []
+        offsetting = []
+        delay = []
+        delayoff = []
+        NumeroFases = []
+        
+        contador = QuantidadeBkShunt
+        
+        dss.lines.first()
+        for _ in range(dss.lines.count):
+            
+            bus1 = dss.lines.bus1
+            bus2 = dss.lines.bus2
+            NomeBarra1 = bus1.split(".")[0].lower()
+            NomeBarra2 = bus2.split(".")[0].lower()
+            
+            
+            if NomeBarra1 in (lista_p1_BkShunt)\
+                or NomeBarra2 in (lista_p1_BkShunt):
+                    
+                contador -= 1
+                    
+                num_fases = dss.cktelement.num_phases
+                NumeroFases.append(num_fases)
+                c_raw = dss.cktelement.currents_mag_ang
+                
+                for i in range(num_fases):
+                    correntes.append(c_raw[i * 2]) 
+                    angulos.append(c_raw[i * 2 + 1])  
+                
+                correntesATrifasico.append(sum(correntes))
+                angulosTrifasico.append(angulos.copy())
+                correntes.clear()
+                angulos.clear()
+                
+                if contador == 0: break
+                dss.lines.next()
+            else:
+                dss.lines.next()
+            
+            
+        for i in range(QuantidadeBkShunt):
+            
+            Bus1 = lista_p1_BkShunt[i]
+            Bus2 = lista_p2_BkShunt[i]
+            
+            
+            FatorPotenciaAtual = math.cos(math.radians(angulosTrifasico[i][0]))
+            phi1 = math.acos(FatorPotenciaAtual)
+            phi2 = math.acos(FatorPotenciaAlvo)
+            
+            PotenciaPassantekW = math.sqrt(3) * kvSE * correntesATrifasico[i] * FatorPotenciaAtual
+            
+            kVArNecessario = PotenciaPassantekW * (math.tan(phi1) - math.tan(phi2))
+            
+           
+            NomeLinha.append(f"NomeLinha{i+1}")
+            NomeCapacitor.append(f"NomeCapacitor{i+1}")
+            NomeCapcontrol.append(f"NomeCapcontrol{i+1}")
+            NumFasesLinha.append(NumeroFases)
+            Bus1list.append(Bus1)
+            Bus2list.append(Bus2)
+            switch.append("yes")
+            Connlist.append("wye")
+            KVFFBus1.append(kvSE)
+            KVFFBus2.append(kvSE)
+            KvasBus1.append(kVArNecessario)
+            NumstepsList.append(Numsteps)
+            onsetting.append(kvSE * 0.97)
+            offsetting.append(kvSE * 1.0)
+            delay.append(30)
+            delayoff.append(60)
+        
+        InfoBancosDeCapacitorAInstalar = {
+                "NomeLinha": NomeLinha,
+                "NumFasesLinha": NumFasesLinha,
+                "Bus1": Bus1list,
+                "Bus2": Bus2list,
+                "switch": switch,
+                "NomeCapacitor": NomeCapacitor,
+                "KVFF": KVFFBus1,
+                "Kvar": KvasBus1,
+                "NumFasesCapacitor": NumFasesLinha,
+                "Conn": Connlist,
+                "Numsteps": NumstepsList,
+                "NomeCapcontrol": NomeCapcontrol,
+                "onsetting": onsetting,
+                "offsetting": offsetting,
+                "delay": delay,
+                "delayoff": delayoff
+        }
+               
+
+        return InfoBancosDeCapacitorAInstalar
+    
+    
+    
+    @staticmethod
+    def InserirNovosBancosCapacitor(InfoBancosDeCapacitorAInstalar: dict,
+                                    dss: Any) -> None:
+        
+        NomeLinha = InfoBancosDeCapacitorAInstalar["NomeLinha"]
+        NumFasesLinha = InfoBancosDeCapacitorAInstalar["NumFasesLinha"]
+        Bus1list = InfoBancosDeCapacitorAInstalar["Bus1"]
+        Bus2list = InfoBancosDeCapacitorAInstalar["Bus2"]
+        switch = InfoBancosDeCapacitorAInstalar["switch"]
+        NomeCapacitor = InfoBancosDeCapacitorAInstalar["NomeCapacitor"]
+        KVFFBus1 = InfoBancosDeCapacitorAInstalar["KVFF"]
+        KvarList = InfoBancosDeCapacitorAInstalar["Kvar"]
+        NumFasesCapacitor = InfoBancosDeCapacitorAInstalar["NumFasesCapacitor"]
+        Connlist = InfoBancosDeCapacitorAInstalar["Conn"]
+        NumstepsList = InfoBancosDeCapacitorAInstalar["Numsteps"]
+        NomeControlador = InfoBancosDeCapacitorAInstalar["NomeCapcontrol"]
+        onsettingList = InfoBancosDeCapacitorAInstalar["onsetting"]
+        offsettingList = InfoBancosDeCapacitorAInstalar["offsetting"]
+        delayList = InfoBancosDeCapacitorAInstalar["delay"]
+        delayoffList = InfoBancosDeCapacitorAInstalar["delayoff"]
+
+        for i in range(len(InfoBancosDeCapacitorAInstalar["NomeLinha"])):
+            dss.text(f" New line.{NomeLinha[i]} phases={NumFasesLinha[i][0]}  bus1={Bus1list[i]}.1.2.3.0 bus2={Bus2list[i]}.1.2.3.0 switch={switch[i]}  ")
+            dss.text(f"New capacitor.{NomeCapacitor[i]} Bus1={Bus1list[i]}.1.2.3.0 kv={KVFFBus1[i]} kvar={KvarList[i]} phases={NumFasesCapacitor[i][0]} conn={Connlist[i]} numsteps={NumstepsList[i]} ")
+            dss.text(f"New capcontrol.{NomeControlador[i]} capacitor={NomeCapacitor[i]} element=line.{NomeLinha[i]} onsetting={onsettingList[i]} offsetting={offsettingList[i]} delay={delayList[i]} delayoff={delayoffList[i]} ")
+
+
+    @staticmethod
+    def ValidarReguladoresInseridos(InfoReguladorTensaoAInstalar: dict,
+                                  dss: Any) -> dict:
+        
+        NomeReguladorTensao = InfoReguladorTensaoAInstalar["NomeReguladorTensao"]
+        Validacao = {}
+        
+        for nome in NomeReguladorTensao:
+            dss.text(f"regcontrol.{nome}")
+            if dss.regcontrols.count > 0:
+                Validacao[nome] = "OK"
+            else:
+                Validacao[nome] = "FALHA"
+        
+        return Validacao
 
     @staticmethod
     def DirsAllDss(DirBase: str,
