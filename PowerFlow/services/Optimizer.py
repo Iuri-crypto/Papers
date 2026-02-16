@@ -334,9 +334,8 @@ class Optimizer:
                 incrementos.append(round(Multiplicador))
                 Multiplicador += IncrementoPercentKwUfvs
             
-            # INICIO
             
-            # Salva potências antes de zerar
+            # Salva potências antes de zerar (Pode ser usado no futuro para análises comparativas!!!)
             DictKvasPmppsUfvsCasoBase = Optimizer.ExtractKvaUfvs(dss, Dic={})
             
             # 1- zerar as potências dos ufvs existentes no alimentador
@@ -355,10 +354,50 @@ class Optimizer:
             BasePu = dss.vsources.pu
             n_particulas = 50
             iters = 15
-            dimensoes = 1
             
-            min_bounds = np.ones(dimensoes) * -16
-            max_bounds = np.ones(dimensoes) * 16
+            
+            ConfiguracsaoAtivosOtimizar = []
+            
+            dss.capacitors.first()
+            for _ in range(dss.capacitors.count):
+                ConfiguracsaoAtivosOtimizar.append({
+                    "Ativo": "Capacitor",
+                    "Nome": dss.capacitors.name,
+                    "LimiteInferior": 0,
+                    "LimiteSuperior": 1,
+                    "Otimizar": "tap"
+                })
+                
+            dss.regcontrols.first()
+            for _ in range(dss.regcontrols.count):
+                ConfiguracsaoAtivosOtimizar.append({
+                    "Ativo": "Regulador",
+                    "Nome": dss.regcontrols.name,
+                    "LimiteInferior": -16,
+                    "LimiteSuperior": 16,
+                    "Otimizar": "Estagio"
+                })
+                
+            ConfiguracsaoAtivosOtimizar.append({
+                "Ativo": "OLTC",
+                "Nome": "OLTC",
+                "LimiteInferior": -16,
+                "LimiteSuperior": 16,
+                "Otimizar": "tap"
+            })
+            
+            ConfiguracsaoAtivosOtimizar.append({
+                "Ativo": "BESS",
+                "Nome": "BESS",
+                "LimiteInferior": 0,
+                "LimiteSuperior": 10000,
+                "Otimizar": "Pkw"
+            })
+            
+            dimensoes = len(ConfiguracsaoAtivosOtimizar)
+            
+            min_bounds = np.array([config["LimiteInferior"] for config in ConfiguracsaoAtivosOtimizar])
+            max_bounds = np.array([config["LimiteSuperior"] for config in ConfiguracsaoAtivosOtimizar])
             bounds = (min_bounds, max_bounds)
             
             options = {'c1': 0.5, 'c2': 0.85, 'w': 0.25}

@@ -12,6 +12,7 @@ from services.ClassPlot import Plot
 import ast
 from geopy.distance import geodesic
 import math
+from collections import defaultdict
 
 class MyClassDss:
     
@@ -74,16 +75,11 @@ class MyClassDss:
                     
         ) = args
         
-        # Importar dentro da Função 
-        # paralelizada
+
         import py_dss_interface
         dss = py_dss_interface.DSS()
         
         
-        
-        
-        
-        # Compila + Configurações
         MyClassDss.Compila(CaminhoDss=CaminhoDss, dss=dss)
         MyClassDss.ConfigLoads(ModeloCarga=ModeloCarga,
                                Limites=[0.85, 1.05],
@@ -97,9 +93,9 @@ class MyClassDss:
         TapsCapacitores = MyClassDss.ConfigCapacitors(dss=dss)
         TapsReguladores = MyClassDss.ConfigRegcontrols(dss=dss)
         
-        DfCurvaCargas = MyClassDss.CarregaCurvasCargas(DirDss=CaminhoDss)   # Carrega curvas de carga
-        DfKwPchs = MyClassDss.CarregaInfoPchs(DirDss=CaminhoDss)            # Carrega as Potência Mensais das Pchs
-        DfKwCargas = MyClassDss.CarregaInfoCargas(DirDss=CaminhoDss)        # Carrega as Potência Mensais das Cargas
+        DfCurvaCargas = MyClassDss.CarregaCurvasCargas(DirDss=CaminhoDss)   
+        DfKwPchs = MyClassDss.CarregaInfoPchs(DirDss=CaminhoDss)            
+        DfKwCargas = MyClassDss.CarregaInfoCargas(DirDss=CaminhoDss)        
         
         Losskw, QKvar, Pkw = [],[],[]
         KwMmgd, KwPchs, KvaMmgd, KvaPchs = [],[],[],[]
@@ -110,15 +106,13 @@ class MyClassDss:
         HistKwKvaBusFasePchs = []
         HistIAngRamosFase = []
         
-        Feeder = os.path.basename(os.path.dirname(CaminhoDss)) # Nome do alimentador
-        Se = os.path.basename(os.path.dirname(os.path.dirname(CaminhoDss))) # Nome da Subestação
+        Feeder = os.path.basename(os.path.dirname(CaminhoDss)) 
+        Se = os.path.basename(os.path.dirname(os.path.dirname(CaminhoDss))) 
         IndicesOtimizaVColeta = MyClassDss.ExtraiIndices(dss=dss, ColetarVTodasBarras=ColetarVTodasBarras)
-        
         
         
         AcharCentroideAlimentador = True
         BarrasCentroide = {}
-        # LOOP
         for i in range(PontosASimular):
             [SumKwCargas,
              SumKvarCargas,
@@ -161,6 +155,8 @@ class MyClassDss:
             dss.solution.init_snap()
             dss.solution.solve_plus_control()
             
+         
+            
             MyClassDss.GetTapReguladores(dss=dss, 
                                          TapsReguladores=TapsReguladores)
             
@@ -178,6 +174,8 @@ class MyClassDss:
             QKvar.append(-1 * round(dss.circuit.total_power[1], 3))        
             Losskw.append(round(dss.circuit.line_losses[0], 3))
             #LossK2_verificar = dss.circuit.losses[0]
+            
+        
 
             if AcharCentroideAlimentador:
                 try:
@@ -214,37 +212,44 @@ class MyClassDss:
                                                                 dss=dss)
                     
                     
+                    # MyClassDss.ValidarBancosCapacitorInseridos(InfoReguladorTensaoAInstalar=InfoReguladores,
+                    #                                         InfoBancosDeCapacitorAInstalar=InfoCapacitores,
+                    #                                             dss=dss)
                     
+                    # MyClassDss.ValidarReguladoresInseridos(InfoReguladorTensaoAInstalar=InfoReguladores,
+                    #                                        InfoBancosDeCapacitorAInstalar=InfoCapacitores,
+                    #                                         dss=dss)
                     
+                
                 except Exception as e:
                     print("erro")
                 AcharCentroideAlimentador = False
                         
             
-            # # Otimizações ======================================================
-            # if Otimizar:
+            # Otimizações ======================================================
+            if Otimizar:
 
-            #     Optimizer.ExecutarOtimizacao(dss=dss,
-            #                                     Maxiterations=Maxiterations,
-            #                                     MaxControliterations=MaxControliterations, 
-            #                                     AlowForms=AlowForms,
-            #                                     SolutionMode=SolutionMode,
-            #                                     PsoOtimizar=PsoOtimizar,
-            #                                     TipoOtimizar=TipoOtimizar,
-            #                                     Restricao1=Restricao1,
-            #                                     Restricao2=Restricao2,
-            #                                     Restricao3=Restricao3,
-            #                                     Restricao4=Restricao4,
-            #                                     IncrementoPercentKwUfvs=IncrementoPercentKwUfvs,
-            #                                     Pkw=Pkw,
-            #                                     SimulPoint=i,
-            #                                     MesIndex=MesIndex, 
-            #                                     MmgdMult=MmgdMult, 
-            #                                     FatorCapacidadeMmgd=FatorCapacidadeMmgd,
-            #                                     SumKwCargas=SumKwCargas,
-            #                                     SumKwPchs=SumKwPchs
-            #                                     )
-            # #===================================================================
+                Optimizer.ExecutarOtimizacao(dss=dss,
+                                                Maxiterations=Maxiterations,
+                                                MaxControliterations=MaxControliterations, 
+                                                AlowForms=AlowForms,
+                                                SolutionMode=SolutionMode,
+                                                PsoOtimizar=PsoOtimizar,
+                                                TipoOtimizar=TipoOtimizar,
+                                                Restricao1=Restricao1,
+                                                Restricao2=Restricao2,
+                                                Restricao3=Restricao3,
+                                                Restricao4=Restricao4,
+                                                IncrementoPercentKwUfvs=IncrementoPercentKwUfvs,
+                                                Pkw=Pkw,
+                                                SimulPoint=i,
+                                                MesIndex=MesIndex, 
+                                                MmgdMult=MmgdMult, 
+                                                FatorCapacidadeMmgd=FatorCapacidadeMmgd,
+                                                SumKwCargas=SumKwCargas,
+                                                SumKwPchs=SumKwPchs
+                                                )
+            #===================================================================
             
             
             DfVAngBusFase = MyClassDss.ExtrairVAngBuses(dss=dss, 
@@ -254,7 +259,13 @@ class MyClassDss:
         
             DfIAngRamosFase = MyClassDss.ExtrairIAngRamos(dss=dss, 
                                                           IMaxCenarioDivergencia=IMaxCenarioDivergencia)
-        
+            
+            
+            
+            
+           
+            
+              
             HistVAngBusFase.append(DfVAngBusFase)
             HistIAngRamosFase.append(DfIAngRamosFase)
             ProgressDict[IndexFeeder] = i + 1
@@ -429,8 +440,6 @@ class MyClassDss:
 
         return DictRetorno
 
-    
-
     @staticmethod
     def montar_grafo_conectado(df_nos, df_trechos):
         """
@@ -478,7 +487,6 @@ class MyClassDss:
 
         return G
     
-
     @staticmethod
     def identificar_ramo(G,
                          df_nos,
@@ -514,8 +522,6 @@ class MyClassDss:
         
         return ramo_selecionado, dist_total
 
-
-
     @staticmethod
     def identificar_caminho_tronco(G, df_nos, df_sub, barra_destino):
         """Encontra o caminho da subestação até a barra alvo."""
@@ -525,8 +531,6 @@ class MyClassDss:
         dist_se = np.sqrt((df_nos['lat'] - lat_s)**2 + (df_nos['lon'] - lon_s)**2)
         pac_se = df_nos.loc[dist_se.idxmin(), 'pac']
         return nx.shortest_path(G, source=pac_se, target=barra_destino)
-
-    
 
     @staticmethod
     def DimensionarKVAReguladoresTensao(Dict: dict, 
@@ -549,7 +553,7 @@ class MyClassDss:
          lista_p2_BkShunt] = Dict.get('ramo', ([], [], [], []))
         
         kvSE = dss.vsources.base_kv
-        vreg = round(kvSE * 1000 / (np.sqrt(3) *ptratio), 3)
+        vreg = round(kvSE * 1000 / (np.sqrt(3) *ptratio), 3) 
         
         correntes=[]
         
@@ -574,6 +578,10 @@ class MyClassDss:
         correntesATrifasico = []
         LoadLosslist = []
         numeroFases = []
+        NomesLinhasDesativadas = []
+        
+        ListaBus1 = []
+        ListaBus2 = []
         
         dss.lines.first()
         for _ in range(dss.lines.count):
@@ -583,8 +591,13 @@ class MyClassDss:
             NomeBarra1 = bus1.split(".")[0].lower()
             NomeBarra2 = bus2.split(".")[0].lower()
             
+            
             if NomeBarra1 in (lista_p1_reg + lista_p2_reg)\
                 and NomeBarra2 in (lista_p1_reg + lista_p2_reg):
+                    
+                NomesLinhasDesativadas.append(dss.lines.name)
+                ListaBus1.append(NomeBarra1)
+                ListaBus2.append(NomeBarra2)
                     
                 num_fases = dss.cktelement.num_phases
                 numeroFases.append(num_fases)
@@ -594,7 +607,7 @@ class MyClassDss:
                 
                 correntesATrifasico.append(sum(correntes))
                 correntes.clear()
-                dss.cktelement.enabled(0) 
+                dss.cktelement.enabled(0)  
                 dss.lines.next()
             else:
                 dss.lines.next()
@@ -607,9 +620,8 @@ class MyClassDss:
             Bus2 = lista_p2_reg[i]
             
             PotenciaPassante = math.sqrt(3) * kvSE * correntesATrifasico[i] 
-            PerctAddicional = 0.08
-            perctKVA = abs(TapMaxAVR - 1) + PerctAddicional
-            PotenciaNominalKVA = round(PotenciaPassante * perctKVA, 3)
+            perctKVA = abs(TapMaxAVR - 1)
+            PotenciaNominalKVA = round(PotenciaPassante * perctKVA, 3) * 2
             
         
             NomeTransformador.append(f"Transformador_Regulador_{i+1}")
@@ -623,8 +635,8 @@ class MyClassDss:
             R.append(r)
             Vreg.append(vreg)
             Ptratiolist.append(ptratio)
-            Bus1list.append(Bus1)
-            Bus2list.append(Bus2)
+            #Bus1list.append(Bus1)
+            #Bus2list.append(Bus2)
             Connlist.append("wye")
             KVFFBus1.append(kvSE)
             KVFFBus2.append(kvSE)
@@ -644,18 +656,18 @@ class MyClassDss:
                 "R": R,
                 "Vreg": Vreg,
                 "Ptratio": Ptratiolist,
-                "Bus1": Bus1list,
-                "Bus2": Bus2list,
+                "Bus1": ListaBus1,
+                "Bus2": ListaBus2,
                 "Conn": Connlist,
                 "KVFFBus1": KVFFBus1,
                 "KVFFBus2": KVFFBus2,
                 "KvasBus1": KvasBus1,
                 "KvasBus2": KvasBus2,
-                "band": bandlist
+                "band": bandlist,
+                "LinhasDesativadas": NomesLinhasDesativadas 
         }
 
         return InfoReguladorTensaoAInstalar
-    
     
     @staticmethod
     def InserirNovosReguladoresTensao(InfoReguladorTensaoAInstalar: dict,
@@ -680,21 +692,16 @@ class MyClassDss:
         KvasBus1 = InfoReguladorTensaoAInstalar["KvasBus1"]
         KvasBus2 = InfoReguladorTensaoAInstalar["KvasBus2"]
         bandlist = InfoReguladorTensaoAInstalar["band"]
+        NomesLinhasDesativadas = InfoReguladorTensaoAInstalar["LinhasDesativadas"]
         
         for i in range(len(InfoReguladorTensaoAInstalar["NomeTransformador"])):
             
             dss.text(f" New transformer.{NomeTransformador[i]} phases={NumFasesTransformador[i]} windings=2 bank={NomeTransformador[i]} ")
-            dss.text(f"Maxtap={MaxTap[i]} Mintap={MinTap[i]} ppm=0 XHL={XHL[i]} %LoadLoss={LoadLosslist[i]} buses=({Bus1list[i]}.1.2.3.0 {Bus2list[i]}.1.2.3.0) ")
+            dss.text(f"Maxtap={MaxTap[i]} Mintap={MinTap[i]} numtaps=32 Taps = [1.0 1.0] ppm=0 XHL={XHL[i]} %LoadLoss={LoadLosslist[i]} buses=({Bus1list[i]}.1.2.3.0 {Bus2list[i]}.1.2.3.0) ")
             dss.text(f"conns='{Connlist[i]} {Connlist[i]}' kvs='{KVFFBus1[i]} {KVFFBus2[i]}' kvas='{KvasBus1[i]} {KvasBus2[i]}' ")
             dss.text(f"New regcontrol.{NomeTransformador[i]} transformer={NomeTransformador[i]} winding=2 r={R[i]} x=0.00001 ")
-            dss.text(f"vreg={Vreg[i]} band={bandlist[i]} ptratio={Ptratiolist[i]} ctprim=22 ")
-            
-        
-           
-        
-        
-            
-            
+            dss.text(f"vreg={Vreg[i]} band={bandlist[i]} ptratio={Ptratiolist[i]} ctprim=22 Maxtapchange=16 ")
+              
     @staticmethod
     def DimensionarKVABancosCapacitores(Dict: dict, 
                                         QuantidadeBkShunt: int,
@@ -734,6 +741,7 @@ class MyClassDss:
         delay = []
         delayoff = []
         NumeroFases = []
+        NomesLinhasDesativadas = []
         
         contador = QuantidadeBkShunt
         
@@ -750,6 +758,8 @@ class MyClassDss:
                 or NomeBarra2 in (lista_p1_BkShunt):
                     
                 contador -= 1
+                NomesLinhasDesativadas.append(dss.lines.name)
+                
                     
                 num_fases = dss.cktelement.num_phases
                 NumeroFases.append(num_fases)
@@ -782,7 +792,7 @@ class MyClassDss:
             
             PotenciaPassantekW = math.sqrt(3) * kvSE * correntesATrifasico[i] * FatorPotenciaAtual
             
-            kVArNecessario = PotenciaPassantekW * (math.tan(phi1) - math.tan(phi2))
+            kVArNecessario = PotenciaPassantekW * (math.tan(phi1) - math.tan(phi2)) * 10
             
            
             NomeLinha.append(f"NomeLinha{i+1}")
@@ -797,7 +807,7 @@ class MyClassDss:
             KVFFBus2.append(kvSE)
             KvasBus1.append(kVArNecessario)
             NumstepsList.append(Numsteps)
-            onsetting.append(kvSE * 0.97)
+            onsetting.append(kvSE * 0.95)
             offsetting.append(kvSE * 1.0)
             delay.append(30)
             delayoff.append(60)
@@ -818,13 +828,12 @@ class MyClassDss:
                 "onsetting": onsetting,
                 "offsetting": offsetting,
                 "delay": delay,
-                "delayoff": delayoff
+                "delayoff": delayoff,
+                "NomesLinhasDesativadas": NomesLinhasDesativadas
         }
                
 
         return InfoBancosDeCapacitorAInstalar
-    
-    
     
     @staticmethod
     def InserirNovosBancosCapacitor(InfoBancosDeCapacitorAInstalar: dict,
@@ -846,29 +855,190 @@ class MyClassDss:
         offsettingList = InfoBancosDeCapacitorAInstalar["offsetting"]
         delayList = InfoBancosDeCapacitorAInstalar["delay"]
         delayoffList = InfoBancosDeCapacitorAInstalar["delayoff"]
+        NomesLinhasDesativadas = InfoBancosDeCapacitorAInstalar["NomesLinhasDesativadas"]
 
         for i in range(len(InfoBancosDeCapacitorAInstalar["NomeLinha"])):
-            dss.text(f" New line.{NomeLinha[i]} phases={NumFasesLinha[i][0]}  bus1={Bus1list[i]}.1.2.3.0 bus2={Bus2list[i]}.1.2.3.0 switch={switch[i]}  ")
-            dss.text(f"New capacitor.{NomeCapacitor[i]} Bus1={Bus1list[i]}.1.2.3.0 kv={KVFFBus1[i]} kvar={KvarList[i]} phases={NumFasesCapacitor[i][0]} conn={Connlist[i]} numsteps={NumstepsList[i]} ")
-            dss.text(f"New capcontrol.{NomeControlador[i]} capacitor={NomeCapacitor[i]} element=line.{NomeLinha[i]} onsetting={onsettingList[i]} offsetting={offsettingList[i]} delay={delayList[i]} delayoff={delayoffList[i]} ")
-
+            dss.text(f"New capacitor.{NomeCapacitor[i]} Bus1={Bus1list[i]}.1.2.3.0 kv={KVFFBus1[i]} kvar={KvarList[i]} phases={NumFasesCapacitor[i][0]} conn={Connlist[i]} numsteps={NumstepsList[i]} states=[1 1 1 1 0 0 0 0]")
+            dss.text(f"New capcontrol.{NomeControlador[i]} capacitor={NomeCapacitor[i]} element=line.{NomesLinhasDesativadas[i]} type=voltage terminal=1 onsetting={onsettingList[i]} offsetting={offsettingList[i]} delay={delayList[i]} delayoff={delayoffList[i]} \n")
 
     @staticmethod
     def ValidarReguladoresInseridos(InfoReguladorTensaoAInstalar: dict,
+                                    InfoBancosDeCapacitorAInstalar: dict,
                                   dss: Any) -> dict:
         
-        NomeReguladorTensao = InfoReguladorTensaoAInstalar["NomeReguladorTensao"]
-        Validacao = {}
+        DictDesvioTensao = {}
         
-        for nome in NomeReguladorTensao:
-            dss.text(f"regcontrol.{nome}")
-            if dss.regcontrols.count > 0:
-                Validacao[nome] = "OK"
-            else:
-                Validacao[nome] = "FALHA"
-        
-        return Validacao
+        # dss.capacitors.first()
+        # for _ in range(dss.capacitors.count):
+        #     if dss.capacitors.name in InfoBancosDeCapacitorAInstalar["NomeCapacitor"]:
+        #         dss.cktelement.enabled(0) 
+        #     dss.capacitors.next()
 
+        # dss.transformers.first()
+        # for _ in range(dss.transformers.count):
+        #     dss.transformers.wdg=2
+        #     dss.transformers.tap=1.0
+        #     dss.transformers.next()
+
+        dss.solution.max_iterations = 15
+        dss.solution.max_control_iterations = 50
+        dss.dssinterface.allow_forms = 0
+        dss.solution.mode=0
+        dss.solution.init_snap()
+        dss.solution.solve_plus_control()
+   
+        
+        v_pu = np.array(dss.circuit.buses_vmag_pu)
+        VpuFiltrado = v_pu[v_pu > 0.1]
+        DesvioTensao = sum(np.abs(1 - VpuFiltrado))
+        DictDesvioTensao["DesvioTensaoCasoBase"] = DesvioTensao
+        
+        taps_reguladoresOLd = defaultdict(list)
+        taps_reguladoresNew = defaultdict(list)
+        
+ 
+        dss.regcontrols.first()
+        for _ in range(dss.regcontrols.count):
+            nome = dss.regcontrols.name  
+            tap = dss.regcontrols.tap_number
+            taps_reguladoresOLd[nome].append(tap)
+            dss.regcontrols.next()
+            
+        
+        MultiplicadorCarga = 3
+        dss.loads.first()
+        for _ in range(dss.loads.count):
+            dss.loads.kw = dss.loads.kw * MultiplicadorCarga
+            dss.loads.next()
+            
+        # dss.regcontrols.first()
+        # for _ in range(dss.regcontrols.count):
+        #     dss.cktelement.enabled(0)
+        #     dss.regcontrols.next()
+            
+        # dss.transformers.first()
+        # for _ in range(dss.transformers.count):
+        #     dss.transformers.wdg=2
+        #     dss.transformers.tap=1
+        #     dss.transformers.next()
+            
+        dss.solution.max_iterations = 15
+        dss.solution.max_control_iterations = 50
+        dss.dssinterface.allow_forms = 0
+        dss.solution.mode=0
+        dss.solution.init_snap()
+        dss.solution.solve_plus_control()
+        
+        
+        dss.regcontrols.first()
+        for _ in range(dss.regcontrols.count):
+            nome = dss.regcontrols.name
+            tap = dss.regcontrols.tap_number
+            taps_reguladoresNew[nome].append(tap)
+            dss.regcontrols.next()
+        
+        
+        v_pu = np.array(dss.circuit.buses_vmag_pu)
+        VpuFiltrado = v_pu[v_pu > 0.1]
+        DesvioTensao = sum(np.abs(1 - VpuFiltrado))
+        DictDesvioTensao[f"DesvioTensaoCasoComRegulador"] = DesvioTensao
+        
+        MultiplicadorCarga = 1/3
+        dss.loads.first()
+        for _ in range(dss.loads.count):
+            dss.loads.kw = dss.loads.kw * MultiplicadorCarga
+            dss.loads.next()
+        
+    @staticmethod
+    def ValidarBancosCapacitorInseridos(InfoReguladorTensaoAInstalar: dict,
+                                        InfoBancosDeCapacitorAInstalar: dict,
+                                    dss: Any) -> dict:
+        
+        DictDesvioTensao = {}
+
+        MultiplicadorCarga = 20
+        dss.loads.first()
+        for _ in range(dss.loads.count):
+            dss.loads.kw = dss.loads.kw * MultiplicadorCarga
+            dss.loads.next()
+            
+            
+        dss.solution.max_iterations = 15
+        dss.solution.max_control_iterations = 50
+        dss.dssinterface.allow_forms = 0
+        dss.solution.mode=0
+        dss.solution.init_snap()
+        dss.solution.solve_plus_control()
+   
+        
+        v_pu = np.array(dss.circuit.buses_vmag_pu)
+        VpuFiltrado = v_pu[v_pu > 0.1]
+        DesvioTensao = sum(np.abs(1 - VpuFiltrado))
+        DictDesvioTensao["DesvioTensaoCasoBase"] = DesvioTensao
+        
+        EstagiosBancoCapacitorOLd = defaultdict(list)
+        EstagiosBancoCapacitorNew = defaultdict(list)
+        
+        dss.capacitors.first()
+        for _ in range(dss.capacitors.count):
+            nome = dss.capacitors.name 
+            tap = dss.capacitors.states
+            if len(tap) == 0.0:
+                valor_decimal = sum(tap) / 1
+            else:
+                valor_decimal = sum(tap) / len(tap)
+            EstagiosBancoCapacitorOLd[nome].append(valor_decimal)
+            dss.capacitors.next()
+            
+            
+        dss.solution.max_iterations = 15
+        dss.solution.max_control_iterations = 50
+        dss.dssinterface.allow_forms = 0
+        dss.solution.mode=0
+        dss.solution.init_snap()
+        dss.solution.solve_plus_control()
+        
+        
+        dss.capacitors.first()
+        for _ in range(dss.capacitors.count):
+            nome = dss.capacitors.name 
+            tap = dss.capacitors.states
+            #dss.capacitors.states = [1,1,1,1,1,1,1,1]
+            #dss.capacitors.states = [0,0,0,0,0,0,0,0]
+            
+            if len(tap) == 0.0:
+                valor_decimal = sum(tap) / 1
+            else:
+                valor_decimal = sum(tap) / len(tap)
+            EstagiosBancoCapacitorNew[nome].append(valor_decimal)
+            dss.capacitors.next()
+            
+        
+        dss.solution.max_iterations = 15
+        dss.solution.max_control_iterations = 50
+        dss.dssinterface.allow_forms = 0
+        dss.solution.mode=0
+        dss.solution.init_snap()
+        dss.solution.solve_plus_control()
+        
+        dss.capacitors.first()
+        for _ in range(dss.capacitors.count):
+            nome = dss.capacitors.name 
+            tap = dss.capacitors.states
+            dss.capacitors.next()
+        
+        
+        v_pu = np.array(dss.circuit.buses_vmag_pu)
+        VpuFiltrado = v_pu[v_pu > 0.1]
+        DesvioTensao = sum(np.abs(1 - VpuFiltrado))
+        DictDesvioTensao[f"DesvioTensaoCasoComCapacitor"] = DesvioTensao
+        
+        MultiplicadorCarga = 1/20
+        dss.loads.first()
+        for _ in range(dss.loads.count):
+            dss.loads.kw = dss.loads.kw * MultiplicadorCarga
+            dss.loads.next()
+        
     @staticmethod
     def DirsAllDss(DirBase: str,
                    mes_index: int,
@@ -2028,7 +2198,7 @@ class MyClassDss:
         TapsCapacitors = {}
         dss.capacitors.first()
         for _ in range(dss.capacitors.count):
-            dss.capacitors.states = [1,1,0,0,0,0,0,0]
+            dss.capacitors.states = [1,1,1,1,0,0,0,0]
             TapsCapacitors[dss.capacitors.name] = []
             dss.capacitors.next()
         return TapsCapacitors

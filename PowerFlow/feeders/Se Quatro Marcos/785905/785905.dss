@@ -564,6 +564,15 @@ New Load.52f5357c735442415b128fc6b4ff68a3b1c1038a2556b1cbc68fc831422e307d Bus1=3
 
  
 
+ ! Definição das Linhas de Conexão (Chaves)
+!New line.NomeLinha11 phases=3 bus1=37900511826576986mt.1.2.3.0 bus2=teste.1.2.3.0 switch=yes
+
+! Definição dos Bancos de Capacitores
+!New capacitor.NomeCapacitor11 Bus1=37900511826576986mt.1.2.3.0 kv=34.5 kvar=3000.61 phases=3 conn=wye numsteps=8 states=[0 0 0 0 0 0 0 0]
+
+! Definição dos Controles (CapControl)
+!New capcontrol.NomeCapcontrol11 capacitor=NomeCapacitor11 element=Line.NomeLinha11 terminal=1 onsetting=34.150 offsetting=34.5 delay=1 delayoff=2
+
 
 ! ===== VOLTAGE BASES =====
 Set VoltageBases = "0.220, 0.240, 0.254, 13.800, 34.500"

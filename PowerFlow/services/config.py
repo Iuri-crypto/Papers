@@ -60,19 +60,19 @@ class SimConfig:
     TapMaxAVR = 1.1
     TapMinAVR = 0.9
     QuantidadeAVR = 2
-    DistAVR = [9/10, 5/10] # Distância do Regulador  em relação a subestação até o baricentro de carga
+    DistAVR = [0.9, 0.6] # Distância do Regulador  em relação a subestação até o baricentro de carga
     xhl = 1
     LoadLoss = 0.5
-    r = 0.001
-    x = 0.001
+    r = 0.0001
+    x = 0.0001
     ptratio = 15
-    band = 20
+    band = 2
     #================================
     
     # Infos Bancos de Capacitores
     #================================
     QuantidadeBkShunt = 2
-    DistBkShunt = [7/10, 3/10] # Distância do Banco de Capacitor  em relação a subestação até o baricentro de carga
+    DistBkShunt = [0.95, 0.8] # Distância do Banco de Capacitor  em relação a subestação até o baricentro de carga
     Numsteps = 8
     FatorPotenciaAlvo = 0.96
     #================================
