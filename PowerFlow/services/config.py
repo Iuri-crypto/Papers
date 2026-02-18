@@ -15,7 +15,6 @@ class SimConfig:
     
     # Parâmetros técnicos
     fd_irrigante: float = 0.75
-    otimizar: bool = True
     Oltc: bool = True
     
     # parâmetros fluxo
@@ -24,12 +23,12 @@ class SimConfig:
     MmgdMult: float = 1.0
     PchsMult: float = 1.0
     ColetarVTodasBarras: bool = True
-    Maxiterations: int = 15
+    Maxiterations: int = 100
     MaxControliterations: int = 50
     AlowForms: int = 0
     SolutionMode: int = 0
-    PontosASimular: int = 1
-    FatorCapacidadeMmgd: float = 0.24
+    PontosASimular: int = 288
+    FatorCapacidadeMmgd: float = 0.23
     AtivarIrrigantes: bool = False
     
     # Filtragem de possíveis divergências
@@ -45,15 +44,18 @@ class SimConfig:
     OutputSimul: str = r"output"
     
     # PSO
-    PsoOtimizar = True
-    TipoOtimizar = "HC_MMGD"
-    Restricao1 = 'V'
+    PsoOtimizar = False
+    Cenario = "HC_MMGD"
+    kwpPackage = 7.5
+    RodarCenarioBase = True # Sem otimização
+    Restricao1 = {"Vmax": 1.5}
     Restricao2 = 'FLUXO_REVERSO'
     Restricao3 = 'SOBRECARGA'
     Restricao4 = 'PERDAS'
     IncrementoPercentKwUfvs = float(5)
     TapMinOltc = 0.9
     TapMaxOlts = 1.1
+    sobregeracao = 300 
     
     # Infos Reguladores de Tensão
     #================================

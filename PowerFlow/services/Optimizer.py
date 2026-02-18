@@ -322,7 +322,8 @@ class Optimizer:
                             MmgdMult, 
                             FatorCapacidadeMmgd,
                             SumKwCargas,
-                            SumKwPchs
+                            SumKwPchs,
+                            DfBalanco
                             ):
         
        

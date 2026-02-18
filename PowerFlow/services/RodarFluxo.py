@@ -15,7 +15,7 @@ import math
 from collections import defaultdict
 import random
 
-class MyClassDss:
+class ClassRodaFluxo:
     
     
     @staticmethod       
@@ -73,8 +73,7 @@ class MyClassDss:
         QuantidadeBkShunt,
         DistBkShunt,
         Numsteps,
-        FatorPotenciaAlvo,
-        sobregeracao
+        FatorPotenciaAlvo
                     
         ) = args
         
@@ -88,11 +87,12 @@ class MyClassDss:
         import py_dss_interface
         dss = py_dss_interface.DSS()
 
-       
+        if cenario == "HC_MMGD":
+            DfBalanco = ClassRodaFluxo.RodarFluxo(args, dss)
         
         
         [TapsReguladores,
-         TapsCapacitores] = MyClassDss.PrepararAmbiente(dss=dss,
+         TapsCapacitores] = ClassRodaFluxo.PrepararAmbiente(dss=dss,
                                                         CaminhoDss=CaminhoDss,
                                                         ModeloCarga=ModeloCarga,
                                                         UsarCargasBt=UsarCargasBt,
@@ -100,18 +100,12 @@ class MyClassDss:
                                                         AtivarIrrigantes=AtivarIrrigantes,
                                                         UsarPchsCghs=UsarPchsCghs)
         
-        DfCurvaCargas = MyClassDss.CarregaCurvasCargas(DirDss=CaminhoDss)   
-        DfKwPchs = MyClassDss.CarregaInfoPchs(DirDss=CaminhoDss)            
-        DfKwCargas = MyClassDss.CarregaInfoCargas(DirDss=CaminhoDss) 
+        DfCurvaCargas = ClassRodaFluxo.CarregaCurvasCargas(DirDss=CaminhoDss)   
+        DfKwPchs = ClassRodaFluxo.CarregaInfoPchs(DirDss=CaminhoDss)            
+        DfKwCargas = ClassRodaFluxo.CarregaInfoCargas(DirDss=CaminhoDss)     
         
-        
-        
-        if cenario == "HC_MMGD":
-            DfBalanco = MyClassDss.RodarFluxo(args, dss)
-            df_cargas = MyClassDss.CargasDados(dss=dss)
-            df_Ufvs = MyClassDss.InserirUfvsBarrasPq(dss=dss, df_cargas=df_cargas, DfKwCargas=DfKwCargas, MesIndex=MesIndex)
-            NumeroPacotes = MyClassDss.CalcularPacotesUfvs(DfBalanco, kwpPackage, FatorCapacidadeMmgd)  
-
+        dss.vsources.base_kv = 34.5
+        dss.vsources.pu = 34.5/34.5   
         
         Losskw, QKvar, Pkw = [],[],[]
         KwMmgd, KwPchs, KvaMmgd, KvaPchs = [],[],[],[]
@@ -124,13 +118,13 @@ class MyClassDss:
         
         Feeder = os.path.basename(os.path.dirname(CaminhoDss)) 
         Se = os.path.basename(os.path.dirname(os.path.dirname(CaminhoDss))) 
-        IndicesOtimizaVColeta = MyClassDss.ExtraiIndices(dss=dss, ColetarVTodasBarras=ColetarVTodasBarras)
+        IndicesOtimizaVColeta = ClassRodaFluxo.ExtraiIndices(dss=dss, ColetarVTodasBarras=ColetarVTodasBarras)
         
-
+        
         dss.lines.first()
         for i in range(dss.lines.count):
-            dss.lines.length = dss.lines.length * 8
-            dss.lines.next()  
+            dss.lines.length = dss.lines.length * 10
+            dss.lines.next()
         
         AcharCentroideAlimentador = True
         BarrasCentroide = {}
@@ -140,7 +134,7 @@ class MyClassDss:
 
             [SumKwCargas,
              SumKvarCargas,
-             DfCargas] = MyClassDss.CargasUpdate(SimulPoint=i,
+             DfCargas] = ClassRodaFluxo.CargasUpdate(SimulPoint=i,
                                                  MesIndex=MesIndex,
                                                  DfCurvasCarga=DfCurvaCargas, 
                                                  dss=dss,
@@ -152,7 +146,7 @@ class MyClassDss:
              
             [SumKwMmgd,
              SumKvarMmgd,
-             DfMmgd] = MyClassDss.MmgdUpdate(SimulPoint=i,
+             DfMmgd] = ClassRodaFluxo.MmgdUpdate(SimulPoint=i,
                                                  MesIndex=MesIndex,
                                                  dss=dss,
                                                  MmgdMult=MmgdMult, 
@@ -161,7 +155,7 @@ class MyClassDss:
              
             [SumKwPchs,
              SumKvarPchs,
-             DfPchs] = MyClassDss.PchsUpdate(SimulPoint=i,
+             DfPchs] = ClassRodaFluxo.PchsUpdate(SimulPoint=i,
                                                  MesIndex=MesIndex,
                                                  DfKwPchs=DfKwPchs, 
                                                  dss=dss,
@@ -180,10 +174,10 @@ class MyClassDss:
             dss.solution.solve_plus_control()
             
             
-            # MyClassDss.GetTapReguladores(dss=dss, 
+            # ClassRodaFluxo.GetTapReguladores(dss=dss, 
             #                              TapsReguladores=TapsReguladores)
             
-            # MyClassDss.GetTapCapacitores(dss=dss, 
+            # ClassRodaFluxo.GetTapCapacitores(dss=dss, 
             #                              TapsCapacitores=TapsCapacitores)
             
             ConsumoKw.append(SumKwCargas)
@@ -204,7 +198,7 @@ class MyClassDss:
             #AcharCentroideAlimentador=False
             if AcharCentroideAlimentador:
                 try:
-                    BarrasCentroide = MyClassDss.AcharCentroide(Feeder_Path=os.path.dirname(CaminhoDss),
+                    BarrasCentroide = ClassRodaFluxo.AcharCentroide(Feeder_Path=os.path.dirname(CaminhoDss),
                                                                 dss=dss,
                                                                 QuantidadeAVR=QuantidadeAVR,
                                                                 DistAVR=DistAVR,
@@ -212,7 +206,7 @@ class MyClassDss:
                                                                 DistBkShunt=DistBkShunt,
                                                                 Numsteps=Numsteps)
                     
-                    InfoReguladores = MyClassDss.DimensionarKVAReguladoresTensao(Dict=BarrasCentroide,
+                    InfoReguladores = ClassRodaFluxo.DimensionarKVAReguladoresTensao(Dict=BarrasCentroide,
                                                                 QuantidadeAVR=QuantidadeAVR,
                                                                 TapMaxAVR=TapMaxAVR,
                                                                 TapMinAVR=TapMinAVR,
@@ -224,24 +218,24 @@ class MyClassDss:
                                                                 band=band,
                                                                 dss=dss)
                     
-                    InfoCapacitores = MyClassDss.DimensionarKVABancosCapacitores(Dict=BarrasCentroide, 
+                    InfoCapacitores = ClassRodaFluxo.DimensionarKVABancosCapacitores(Dict=BarrasCentroide, 
                                                                 QuantidadeBkShunt=QuantidadeBkShunt,
                                                                 Numsteps=Numsteps,
                                                                 FatorPotenciaAlvo=FatorPotenciaAlvo,
                                                                 dss=dss)
                     
-                    MyClassDss.InserirNovosReguladoresTensao(InfoReguladorTensaoAInstalar=InfoReguladores,
+                    ClassRodaFluxo.InserirNovosReguladoresTensao(InfoReguladorTensaoAInstalar=InfoReguladores,
                                                                 dss=dss)
                     
-                    MyClassDss.InserirNovosBancosCapacitor(InfoBancosDeCapacitorAInstalar=InfoCapacitores,
+                    ClassRodaFluxo.InserirNovosBancosCapacitor(InfoBancosDeCapacitorAInstalar=InfoCapacitores,
                                                                 dss=dss)
                     
                     
-                    # MyClassDss.ValidarBancosCapacitorInseridos(InfoReguladorTensaoAInstalar=InfoReguladores,
+                    # ClassRodaFluxo.ValidarBancosCapacitorInseridos(InfoReguladorTensaoAInstalar=InfoReguladores,
                     #                                         InfoBancosDeCapacitorAInstalar=InfoCapacitores,
                     #                                             dss=dss)
                     
-                    # MyClassDss.ValidarReguladoresInseridos(InfoReguladorTensaoAInstalar=InfoReguladores,
+                    # ClassRodaFluxo.ValidarReguladoresInseridos(InfoReguladorTensaoAInstalar=InfoReguladores,
                     #                                        InfoBancosDeCapacitorAInstalar=InfoCapacitores,
                     #                                         dss=dss)
                     
@@ -277,8 +271,8 @@ class MyClassDss:
             # HC MMGD sem otimizar
             elif RodarCenarioBase:
                 
-                #DfBalanco = MyClassDss.RodarFluxo(args=args, dss=dss)
-                dfHC = MyClassDss.CenarioBaseHC_MMGD(dss=dss,
+                #DfBalanco = ClassRodaFluxo.RodarFluxo(args=args, dss=dss)
+                dfHC = ClassRodaFluxo.CenarioBaseHC_MMGD(dss=dss,
                                                 Maxiterations=Maxiterations,
                                                 MaxControliterations=MaxControliterations, 
                                                 AlowForms=AlowForms,
@@ -301,11 +295,7 @@ class MyClassDss:
                                                 PkWUfvsZerados = PkWUfvsZerados,
                                                 DictKvasPmppsUfvsCasoBase = DictKvasPmppsUfvsCasoBase,
                                                 kwpPackage=kwpPackage,
-                                                DfKwCargas=DfKwCargas,
-                                                df_Ufvs=df_Ufvs,
-                                                NumeroPacotes=NumeroPacotes,
-                                                df_cargas=df_cargas,
-                                                sobregeracao=sobregeracao
+                                                DfKwCargas=DfKwCargas
                                                 )
                 listaResultadosHC.append(dfHC)
                 
@@ -313,22 +303,27 @@ class MyClassDss:
             #===================================================================
             
             
-            # DfVAngBusFase = MyClassDss.ExtrairVAngBuses(dss=dss, 
+            # DfVAngBusFase = ClassRodaFluxo.ExtrairVAngBuses(dss=dss, 
             #                                             IndicesOtimizaVColeta=IndicesOtimizaVColeta,
             #                                             VminCenarioDivergencia=VminCenarioDivergencia, 
             #                                             VmaxCenarioDivergencia=VmaxCenarioDivergencia)
         
-            # DfIAngRamosFase = MyClassDss.ExtrairIAngRamos(dss=dss, 
+            # DfIAngRamosFase = ClassRodaFluxo.ExtrairIAngRamos(dss=dss, 
             #                                               IMaxCenarioDivergencia=IMaxCenarioDivergencia)
             
             
+            
+            
+           
+            
+              
             #HistVAngBusFase.append(DfVAngBusFase)
             #HistIAngRamosFase.append(DfIAngRamosFase)
             ProgressDict[IndexFeeder] = i + 1
             
             
         # Salvar Dados
-        # DfDadosRamos = MyClassDss.DadosRamos(dss=dss)        
+        # DfDadosRamos = ClassRodaFluxo.DadosRamos(dss=dss)        
         # #DfHistVAngBusFase = pl.concat(HistVAngBusFase)
         # DfHistKwKvaBusFaseCargas = pl.concat(HistKwKvaBusFaseCargas)
         # DfHistKwKvaBusFaseMmgd =pl.concat(HistKwKvaBusFaseMmgd)
@@ -336,12 +331,12 @@ class MyClassDss:
         # DfHistIAngRamosFase = pl.concat(HistIAngRamosFase)
         
         # hc MMGD
-        OutputInfoHC = pl.concat(listaResultadosHC)        
-        MyClassDss.SalvarDadosHCCasoBase(OutputInfoHC,OutputSimul,MesIndex,Feeder,Se)
+        OutputInfoHC = pl.concat(listaResultadosHC)
         print("teste")
         
+        
         # [DadosRamo, DadosBarra
-        # ] = MyClassDss.CondicionamentoDadosSaida(DfHistVAngBusFase, 
+        # ] = ClassRodaFluxo.CondicionamentoDadosSaida(DfHistVAngBusFase, 
         #                                         DfHistKwKvaBusFaseCargas, 
         #                                         DfHistKwKvaBusFaseMmgd,
         #                                         DfHistKwKvaBusFasePchs, 
@@ -352,14 +347,14 @@ class MyClassDss:
         #                                         Feeder,
         #                                         Se)
             
-        #MyClassDss.SalvarDados(DadosBarra,
+        # ClassRodaFluxo.SalvarDados(DadosBarra,
         #                        DadosRamo,
         #                        OutputSimul,
         #                        MesIndex,
         #                        Feeder,
         #                        Se)
         
-        # DfBalanco = MyClassDss.CriarDataFramePowers(ConsumoKw,
+        # DfBalanco = ClassRodaFluxo.CriarDataFramePowers(ConsumoKw,
         #                                             ConsumoKva,
         #                                             KwMmgd,
         #                                             KwPchs, 
@@ -369,7 +364,7 @@ class MyClassDss:
         #                                             QKvar,
         #                                             Losskw)
         
-        # MyClassDss.SalvarDataframePowers(DfBalanco,
+        # ClassRodaFluxo.SalvarDataframePowers(DfBalanco,
         #                                  OutputSimul,
         #                                  MesIndex,
         #                                  Feeder,
@@ -391,8 +386,7 @@ class MyClassDss:
                            PsoOtimizar, cenario, Restricao1, Restricao2, Restricao3, Restricao4, 
                            IncrementoPercentKwUfvs, Pkw, SimulPoint, MesIndex, MmgdMult, 
                            FatorCapacidadeMmgd, SumKwCargas, SumKwPchs, DfBalanco, 
-                           PkWUfvsZerados, DictKvasPmppsUfvsCasoBase, kwpPackage, DfKwCargas,
-                           df_Ufvs,NumeroPacotes,df_cargas,sobregeracao) -> pl.DataFrame:
+                           PkWUfvsZerados, DictKvasPmppsUfvsCasoBase, kwpPackage, DfKwCargas) -> pl.DataFrame:
         
         colunas_hc = {
             "SimulPoint": [], "Incremento": [], "Vmax": [], "Vmin": [], "Vmean": [],
@@ -400,16 +394,15 @@ class MyClassDss:
             "EstagiosBkShunt": [], "VmaxReferencia": [], "PkW":[],
             "LosskW":[]
         }
-        
-    
-    
       
-        curva_irradiancia = MyClassDss.CurvaIrradiance(fator_capacidade_desejado=FatorCapacidadeMmgd, dias=3)
+        curva_irradiancia = ClassRodaFluxo.CurvaIrradiance(fator_capacidade_desejado=FatorCapacidadeMmgd, dias=3)
         irradi_now = curva_irradiancia[SimulPoint]
         VmaxReferencia = Restricao1["Vmax"]
         
-        
-        lista_ufs = MyClassDss.ZerarPowersUfvs(dss=dss)
+        df_cargas = ClassRodaFluxo.CargasDados(dss=dss)
+        df_Ufvs = ClassRodaFluxo.InserirUfvsBarrasPq(dss=dss, df_cargas=df_cargas, DfKwCargas=DfKwCargas, MesIndex=MesIndex)
+        NumeroPacotes = ClassRodaFluxo.CalcularPacotesUfvs(DfBalanco, kwpPackage, FatorCapacidadeMmgd)
+        lista_ufs = ClassRodaFluxo.ZerarPowersUfvs(dss=dss)
 
         if irradi_now >= 0.03 and cenario == "HC_MMGD":
             # Geração de incrementos
@@ -423,7 +416,7 @@ class MyClassDss:
             for incremento in incrementos:
                 maxiterations = dss.solution.iterations
                 dictArmazenakwUfvs = {nome: {"kva_UFV": 0.001, "Pkwp_UFV": 0.001} for nome in lista_ufs}
-                QuantidadePacotesInstalar = int(np.ceil(NumeroPacotes * incremento)) 
+                QuantidadePacotesInstalar = int(np.ceil(NumeroPacotes * incremento))
                 TotalSolicitado = QuantidadePacotesInstalar
                 tentativas = 0
                 
@@ -435,7 +428,7 @@ class MyClassDss:
                         dados_atuais = dictArmazenakwUfvs[nome_sorteado]
                         nova_p = dados_atuais["Pkwp_UFV"] + kwpPackage
                         
-                        if nova_p <= (mapa_cargas[nome_sorteado] * sobregeracao):
+                        if nova_p <= (mapa_cargas[nome_sorteado] * 1.20):
                             dados_atuais["kva_UFV"] = nova_p
                             dados_atuais["Pkwp_UFV"] = nova_p
                             QuantidadePacotesInstalar -= 1
@@ -446,7 +439,7 @@ class MyClassDss:
                         if tentativas >= 20:
                             alocou = False
                             for b in ufs_ordenados:
-                                if (dictArmazenakwUfvs[b]["Pkwp_UFV"] + kwpPackage) <= (mapa_cargas[b] * sobregeracao):
+                                if (dictArmazenakwUfvs[b]["Pkwp_UFV"] + kwpPackage) <= (mapa_cargas[b] * 1.20):
                                     dictArmazenakwUfvs[b]["kva_UFV"] += kwpPackage
                                     dictArmazenakwUfvs[b]["Pkwp_UFV"] += kwpPackage
                                     QuantidadePacotesInstalar -= 1
@@ -458,18 +451,24 @@ class MyClassDss:
                                 break
 
                 except KeyError as e:
-                    #print(f"Erro de Chave: O UFV {e} não foi encontrado nos dicionários de mapeamento.")
-                    continue
+                    print(f"Erro de Chave: O UFV {e} não foi encontrado nos dicionários de mapeamento.")
                 except Exception as e:
                     print(f"Ocorreu um erro inesperado na alocação de carga: {e}")
 
+                # Atualiza OpenDSS
+                # dss.pvsystems.first()
+                # for _ in range(dss.pvsystems.count):
+                #     n = dss.pvsystems.name
+                #     #dss.pvsystems.irradiance = irradi_now
+                #     dss.pvsystems.kva = dictArmazenakwUfvs[n]["kva_UFV"]
+                #     dss.pvsystems.pmpp = dictArmazenakwUfvs[n]["Pkwp_UFV"]
+                #     dss.pvsystems.next()
+                    
+                dss.loads.first()
+                for _ in range(dss.loads.count):
+                    dss.loads.kw = dss.loads.kw - 80
+                    dss.loads.next()
                 
-                dss.pvsystems.first()
-                for _ in range(dss.pvsystems.count):
-                    n = dss.pvsystems.name
-                    dss.pvsystems.kva = dictArmazenakwUfvs[n]["kva_UFV"] 
-                    dss.pvsystems.pmpp = dictArmazenakwUfvs[n]["Pkwp_UFV"] 
-                    dss.pvsystems.next()
 
                 dss.solution.max_iterations = Maxiterations
                 dss.solution.max_control_iterations = MaxControliterations
@@ -477,14 +476,16 @@ class MyClassDss:
                 dss.solution.mode=SolutionMode
                 dss.solution.init_snap()
                 dss.solution.solve_plus_control()
-                
+                #dss.solution.solve()
                 
                 V = np.array(dss.circuit.buses_vmag_pu)
-                v_max_calc = np.max(V).item() 
+                v_max_calc = np.max(V).item() # .item() converte numpy float para python float
                 
                 Pkw = -1 * round(dss.circuit.total_power[0], 3)          
                 Losskw = round(dss.circuit.line_losses[0], 3)
+                #Losskw = dss.circuit.losses[0]
 
+                # Preenchimento das colunas
                 colunas_hc["SimulPoint"].append(SimulPoint)
                 colunas_hc["Incremento"].append(incremento)
                 colunas_hc["Vmax"].append(v_max_calc)
@@ -492,8 +493,8 @@ class MyClassDss:
                 colunas_hc["Vmean"].append(np.mean(V).item())
                 colunas_hc["PacotesInstalados"].append(TotalSolicitado - QuantidadePacotesInstalar)
                 colunas_hc["PacotesTotais"].append(NumeroPacotes)
-                colunas_hc["TapsAVR"].append(str(MyClassDss.GetTapReguladores(dss, {})))
-                colunas_hc["EstagiosBkShunt"].append(str(MyClassDss.GetTapCapacitores(dss, {})))
+                colunas_hc["TapsAVR"].append(str(ClassRodaFluxo.GetTapReguladores(dss, {})))
+                colunas_hc["EstagiosBkShunt"].append(str(ClassRodaFluxo.GetTapCapacitores(dss, {})))
                 colunas_hc["VmaxReferencia"].append(VmaxReferencia)
                 colunas_hc["PkW"].append(Pkw)
                 colunas_hc["LosskW"].append(Losskw)
@@ -502,16 +503,12 @@ class MyClassDss:
                 if v_max_calc >= VmaxReferencia:
                     break
         else:
-            
-            
-                
+            # Caso Base (Noite)
             V = np.array(dss.circuit.buses_vmag_pu)
-            v_mean = np.mean(V)
-            v_std = np.std(V)
-            V = V[np.abs(V - v_mean) <= 2 * v_std]
-
             Pkw = -1 * round(dss.circuit.total_power[0], 3)       
             Losskw = round(dss.circuit.line_losses[0], 3)
+            #Losskw = dss.circuit.losses[0]
+
 
             colunas_hc["SimulPoint"].append(SimulPoint)
             colunas_hc["Incremento"].append(0)
@@ -520,30 +517,29 @@ class MyClassDss:
             colunas_hc["Vmean"].append(np.mean(V).item())
             colunas_hc["PacotesInstalados"].append(0)
             colunas_hc["PacotesTotais"].append(NumeroPacotes)
-            colunas_hc["TapsAVR"].append(str(MyClassDss.GetTapReguladores(dss, {})))
-            colunas_hc["EstagiosBkShunt"].append(str(MyClassDss.GetTapCapacitores(dss, {})))
+            colunas_hc["TapsAVR"].append(str(ClassRodaFluxo.GetTapReguladores(dss, {})))
+            colunas_hc["EstagiosBkShunt"].append(str(ClassRodaFluxo.GetTapCapacitores(dss, {})))
             colunas_hc["VmaxReferencia"].append(VmaxReferencia)
             colunas_hc["PkW"].append(Pkw)
             colunas_hc["LosskW"].append(Losskw)
 
+        return pl.DataFrame(colunas_hc, schema={
+            "SimulPoint": pl.Int64,
+            "Incremento": pl.Float64,
+            "Vmax": pl.Float64,
+            "Vmin": pl.Float64,
+            "Vmean": pl.Float64,
+            "PacotesInstalados": pl.Int64,
+            "PacotesTotais": pl.Int64,
+            "TapsAVR": pl.String,        
+            "EstagiosBkShunt": pl.String, 
+            "VmaxReferencia": pl.Float64,
+            "PkW": pl.Float64,
+            "LosskW": pl.Float64
+        })
 
-        df = pl.DataFrame(colunas_hc, schema={
-                    "SimulPoint": pl.Int64,
-                    "Incremento": pl.Float64,
-                    "Vmax": pl.Float64,
-                    "Vmin": pl.Float64,
-                    "Vmean": pl.Float64,
-                    "PacotesInstalados": pl.Int64,
-                    "PacotesTotais": pl.Int64,
-                    "TapsAVR": pl.String,        
-                    "EstagiosBkShunt": pl.String, 
-                    "VmaxReferencia": pl.Float64,
-                    "PkW": pl.Float64,
-                    "LosskW": pl.Float64
-                })
-        
-        return df
-              
+                
+                    
     @staticmethod
     def CalcularPacotesUfvs(DfBalanco: pl.DataFrame,
                             kwpPackage: float,
@@ -605,10 +601,10 @@ class MyClassDss:
             dss.text(f"New loadshape.myirrad_{cont} npts=1 interval=1 mult=[1]")
             dss.text(f"New tshape.mytemp_{cont} npts=1 interval=1 temp=[25]")
             dss.text(f"New pvsystem.{nome_ufv} Vminpu=0.5 Vmaxpu=1.5 phases={QuantFases} conn=wye bus1={bus_raw}")
-            dss.text(f"~ kv={kv} kva=1 pmpp=1 pf=0.98 %cutin=0.05 %cutout=0.05 varfollowinverter=Yes effcurve=myeff_{cont}")
+            dss.text(f"~ kv={kv} kva=0.001 pmpp=0.001 pf=0.98 %cutin=0.05 %cutout=0.05 varfollowinverter=Yes effcurve=myeff_{cont}")
             dss.text(f"~ p-tcurve=mypvst_{cont} daily=myirrad_{cont} tdaily=mytemp_{cont}")
 
-            #info_carga = df_cargas.filter(pl.col("barra") == bus_raw)
+            info_carga = df_cargas.filter(pl.col("barra") == bus_raw)
             #pkw_carga = info_carga.select("Pkw").to_numpy()[0][0] if not info_carga.is_empty() else 0
             
             row_uc = DfKwCargas.filter(pl.col("cod_id") == nome)
@@ -618,8 +614,8 @@ class MyClassDss:
                 "nome_ufv": nome_ufv,
                 "barra": barra_nome,
                 "Pkw_carga_original": mes_kw,
-                "Pkwp_UFV": 1,
-                "kva_UFV": 1
+                "Pkwp_UFV": 0.001,
+                "kva_UFV": 0.001
             })
             
             cont += 1
@@ -749,7 +745,7 @@ class MyClassDss:
         
         try:
             [TapsReguladores,
-            TapsCapacitores] = MyClassDss.PrepararAmbiente(dss=dss,
+            TapsCapacitores] = ClassRodaFluxo.PrepararAmbiente(dss=dss,
                                                             CaminhoDss=CaminhoDss,
                                                             ModeloCarga=ModeloCarga,
                                                             UsarCargasBt=UsarCargasBt,
@@ -758,9 +754,9 @@ class MyClassDss:
                                                             UsarPchsCghs=UsarPchsCghs)
         except Exception as e:
             print("erro")
-        DfCurvaCargas = MyClassDss.CarregaCurvasCargas(DirDss=CaminhoDss)   
-        DfKwPchs = MyClassDss.CarregaInfoPchs(DirDss=CaminhoDss)            
-        DfKwCargas = MyClassDss.CarregaInfoCargas(DirDss=CaminhoDss)        
+        DfCurvaCargas = ClassRodaFluxo.CarregaCurvasCargas(DirDss=CaminhoDss)   
+        DfKwPchs = ClassRodaFluxo.CarregaInfoPchs(DirDss=CaminhoDss)            
+        DfKwCargas = ClassRodaFluxo.CarregaInfoCargas(DirDss=CaminhoDss)        
         
         Losskw, QKvar, Pkw = [],[],[]
         KwMmgd, KwPchs, KvaMmgd, KvaPchs = [],[],[],[]
@@ -773,13 +769,13 @@ class MyClassDss:
         
         Feeder = os.path.basename(os.path.dirname(CaminhoDss)) 
         Se = os.path.basename(os.path.dirname(os.path.dirname(CaminhoDss))) 
-        IndicesOtimizaVColeta = MyClassDss.ExtraiIndices(dss=dss, ColetarVTodasBarras=ColetarVTodasBarras)
+        IndicesOtimizaVColeta = ClassRodaFluxo.ExtraiIndices(dss=dss, ColetarVTodasBarras=ColetarVTodasBarras)
         
         
         for i in range(PontosASimular):
             [SumKwCargas,
              SumKvarCargas,
-             DfCargas] = MyClassDss.CargasUpdate(SimulPoint=i,
+             DfCargas] = ClassRodaFluxo.CargasUpdate(SimulPoint=i,
                                                  MesIndex=MesIndex,
                                                  DfCurvasCarga=DfCurvaCargas, 
                                                  dss=dss,
@@ -791,7 +787,7 @@ class MyClassDss:
              
             [SumKwMmgd,
              SumKvarMmgd,
-             DfMmgd] = MyClassDss.MmgdUpdate(SimulPoint=i,
+             DfMmgd] = ClassRodaFluxo.MmgdUpdate(SimulPoint=i,
                                                  MesIndex=MesIndex,
                                                  dss=dss,
                                                  MmgdMult=MmgdMult, 
@@ -800,7 +796,7 @@ class MyClassDss:
              
             [SumKwPchs,
              SumKvarPchs,
-             DfPchs] = MyClassDss.PchsUpdate(SimulPoint=i,
+             DfPchs] = ClassRodaFluxo.PchsUpdate(SimulPoint=i,
                                                  MesIndex=MesIndex,
                                                  DfKwPchs=DfKwPchs, 
                                                  dss=dss,
@@ -819,10 +815,10 @@ class MyClassDss:
             dss.solution.solve_plus_control()
             
             
-            MyClassDss.GetTapReguladores(dss=dss, 
+            ClassRodaFluxo.GetTapReguladores(dss=dss, 
                                          TapsReguladores=TapsReguladores)
             
-            MyClassDss.GetTapCapacitores(dss=dss, 
+            ClassRodaFluxo.GetTapCapacitores(dss=dss, 
                                          TapsCapacitores=TapsCapacitores)
             
             ConsumoKw.append(SumKwCargas)
@@ -838,12 +834,12 @@ class MyClassDss:
             #LossK2_verificar = dss.circuit.losses[0]
             
             
-            # DfVAngBusFase = MyClassDss.ExtrairVAngBuses(dss=dss, 
+            # DfVAngBusFase = ClassRodaFluxo.ExtrairVAngBuses(dss=dss, 
             #                                             IndicesOtimizaVColeta=IndicesOtimizaVColeta,
             #                                             VminCenarioDivergencia=VminCenarioDivergencia, 
             #                                             VmaxCenarioDivergencia=VmaxCenarioDivergencia)
         
-            # DfIAngRamosFase = MyClassDss.ExtrairIAngRamos(dss=dss, 
+            # DfIAngRamosFase = ClassRodaFluxo.ExtrairIAngRamos(dss=dss, 
             #                                               IMaxCenarioDivergencia=IMaxCenarioDivergencia)
             
             
@@ -852,7 +848,7 @@ class MyClassDss:
             ProgressDict[IndexFeeder] = i + 1
             
             
-        #DfDadosRamos = MyClassDss.DadosRamos(dss=dss)        
+        #DfDadosRamos = ClassRodaFluxo.DadosRamos(dss=dss)        
         #DfHistVAngBusFase = pl.concat(HistVAngBusFase)
         #DfHistKwKvaBusFaseCargas = pl.concat(HistKwKvaBusFaseCargas)
         #DfHistKwKvaBusFaseMmgd =pl.concat(HistKwKvaBusFaseMmgd)
@@ -861,7 +857,7 @@ class MyClassDss:
         
         
         # [DadosRamo, DadosBarra
-        # ] = MyClassDss.CondicionamentoDadosSaida(DfHistVAngBusFase, 
+        # ] = ClassRodaFluxo.CondicionamentoDadosSaida(DfHistVAngBusFase, 
         #                                         DfHistKwKvaBusFaseCargas, 
         #                                         DfHistKwKvaBusFaseMmgd,
         #                                         DfHistKwKvaBusFasePchs, 
@@ -872,14 +868,14 @@ class MyClassDss:
         #                                         Feeder,
         #                                         Se)
             
-        # MyClassDss.SalvarDados(DadosBarra,
+        # ClassRodaFluxo.SalvarDados(DadosBarra,
         #                        DadosRamo,
         #                        OutputSimul,
         #                        MesIndex,
         #                        Feeder,
         #                        Se)
         
-        DfBalanco = MyClassDss.CriarDataFramePowers(ConsumoKw,
+        DfBalanco = ClassRodaFluxo.CriarDataFramePowers(ConsumoKw,
                                                     ConsumoKva,
                                                     KwMmgd,
                                                     KwPchs, 
@@ -889,7 +885,7 @@ class MyClassDss:
                                                     QKvar,
                                                     Losskw)
         
-        # MyClassDss.SalvarDataframePowers(DfBalanco,
+        # ClassRodaFluxo.SalvarDataframePowers(DfBalanco,
         #                                  OutputSimul,
         #                                  MesIndex,
         #                                  Feeder,
@@ -906,18 +902,18 @@ class MyClassDss:
                          AtivarIrrigantes: bool,
                          UsarPchsCghs: bool) -> dict:
         
-        MyClassDss.Compila(CaminhoDss=CaminhoDss, dss=dss)
-        MyClassDss.ConfigLoads(ModeloCarga=ModeloCarga,
+        ClassRodaFluxo.Compila(CaminhoDss=CaminhoDss, dss=dss)
+        ClassRodaFluxo.ConfigLoads(ModeloCarga=ModeloCarga,
                                Limites=[0.85, 1.05],
                                UsarCargasBt=UsarCargasBt,
                                UsarCargasMt=UsarCargasMt,
                                dss=dss,
                                AtivarIrrigantes=AtivarIrrigantes)
         
-        MyClassDss.ConfigPchs(UsarPchs=UsarPchsCghs, dss=dss)
-        MyClassDss.ConfigCapcontrols(dss=dss)
-        TapsCapacitores = MyClassDss.ConfigCapacitors(dss=dss)
-        TapsReguladores = MyClassDss.ConfigRegcontrols(dss=dss)
+        ClassRodaFluxo.ConfigPchs(UsarPchs=UsarPchsCghs, dss=dss)
+        ClassRodaFluxo.ConfigCapcontrols(dss=dss)
+        TapsCapacitores = ClassRodaFluxo.ConfigCapacitors(dss=dss)
+        TapsReguladores = ClassRodaFluxo.ConfigRegcontrols(dss=dss)
         
         return TapsReguladores, TapsCapacitores
                          
@@ -972,8 +968,8 @@ class MyClassDss:
         barra_proxima = df_nos.loc[distancias.idxmin(), 'pac']
 
 
-        G = MyClassDss.montar_grafo_conectado(df_nos, df_trechos)
-        caminho_vermelho = MyClassDss.identificar_caminho_tronco(G, df_nos, df_sub, barra_proxima)
+        G = ClassRodaFluxo.montar_grafo_conectado(df_nos, df_trechos)
+        caminho_vermelho = ClassRodaFluxo.identificar_caminho_tronco(G, df_nos, df_sub, barra_proxima)
 
         distanciasAVRs = []
         distanciasBkShunt = []
@@ -986,7 +982,7 @@ class MyClassDss:
 
         for i in range(QuantidadeAVR):
             Distancia = DistAVR[i]
-            ramo_especifico, d_total = MyClassDss.identificar_ramo(G,
+            ramo_especifico, d_total = ClassRodaFluxo.identificar_ramo(G,
                                                                    df_nos,
                                                                    caminho_vermelho,
                                                                    Distancia)
@@ -999,7 +995,7 @@ class MyClassDss:
         
         for i in range(QuantidadeBkShunt):
             Distancia = DistBkShunt[i]
-            ramo_especifico, d_total = MyClassDss.identificar_ramo(G,
+            ramo_especifico, d_total = ClassRodaFluxo.identificar_ramo(G,
                                                                    df_nos,
                                                                    caminho_vermelho,
                                                                    Distancia)
@@ -1294,7 +1290,7 @@ class MyClassDss:
             dss.text(f"Maxtap={MaxTap[i]} Mintap={MinTap[i]} numtaps=32 Taps = [1.0 1.0] ppm=0 XHL={XHL[i]} %LoadLoss={LoadLosslist[i]} buses=({Bus1list[i]}.1.2.3.0 {Bus2list[i]}.1.2.3.0) ")
             dss.text(f"conns='{Connlist[i]} {Connlist[i]}' kvs='{KVFFBus1[i]} {KVFFBus2[i]}' kvas='{KvasBus1[i]} {KvasBus2[i]}' ")
             dss.text(f"New regcontrol.{NomeTransformador[i]} transformer={NomeTransformador[i]} winding=2 r={R[i]} x=0.00001 ")
-            dss.text(f"vreg={Vreg[i]} band={bandlist[i]} ptratio={Ptratiolist[i]} ctprim=22 Maxtapchange=1 ")
+            dss.text(f"vreg={Vreg[i]} band={bandlist[i]} ptratio={Ptratiolist[i]} ctprim=22 Maxtapchange=16 ")
               
     @staticmethod
     def DimensionarKVABancosCapacitores(Dict: dict, 
@@ -1825,7 +1821,7 @@ class MyClassDss:
             
         if DadosRamo is not None:
             DadosRamo.write_ipc(caminho_ramo)
-        
+            
     @staticmethod
     def CondicionamentoDadosSaida(DfHistVAngBusFase: pl.DataFrame,
                                   DfHistKwKvaBusFaseCargas: pl.DataFrame,
@@ -2596,7 +2592,7 @@ class MyClassDss:
         list_qkw = []
 
         # Altera a irradiação em cima do painel - aumenta/diminui
-        curva_irradiancia = MyClassDss.CurvaIrradiance(fator_capacidade_desejado=FatorCapacidadeMmgd,
+        curva_irradiancia = ClassRodaFluxo.CurvaIrradiance(fator_capacidade_desejado=FatorCapacidadeMmgd,
                                                                      dias=Days)
         irradi_now = curva_irradiancia[SimulPoint] 
 
@@ -2886,9 +2882,9 @@ class MyClassDss:
         
         Indices = []
         if ColetarVTodasBarras:
-            IndicesCargas = MyClassDss.ExtraiIndicesCargas(dss=dss)
-            IndicesMmgd = MyClassDss.ExtraiIndicesMmgd(dss=dss)
-            IndicesPchs = MyClassDss.ExtraiIndicesPchs(dss=dss)
+            IndicesCargas = ClassRodaFluxo.ExtraiIndicesCargas(dss=dss)
+            IndicesMmgd = ClassRodaFluxo.ExtraiIndicesMmgd(dss=dss)
+            IndicesPchs = ClassRodaFluxo.ExtraiIndicesPchs(dss=dss)
             Indices = IndicesCargas + IndicesMmgd + IndicesPchs
 
         return Indices
@@ -3065,35 +3061,3 @@ class MyClassDss:
             #nomes_finais = df_resultado["barra_fase"].to_list()
 
         return indices_pchs
-    
-    
-    @staticmethod
-    def SalvarDadosHCCasoBase(DadosHCCasoBase: pl.DataFrame,
-                    OutputSimul: str,
-                    MesIndex: int,
-                    Feeder: str,
-                    Se: str) -> None:
-        
-        caminho_script = os.path.abspath(__file__)
-        pasta_services = os.path.dirname(caminho_script)
-        raiz_projeto = os.path.dirname(pasta_services)
-        
-        caminho_output_base = os.path.join(raiz_projeto, OutputSimul)
-        if not os.path.exists(caminho_output_base):
-            os.makedirs(caminho_output_base, exist_ok=True)
-        
-        caminho_final = os.path.join(caminho_output_base, Se, Feeder, str(MesIndex))
-        
-        if not os.path.exists(caminho_final):
-            os.makedirs(caminho_final, exist_ok=True)
-        
-        caminho_barra = os.path.join(caminho_final, "dados_HCCasoBase.feather")
-            
-        if DadosHCCasoBase is not None:
-            DadosHCCasoBase.write_ipc(caminho_barra)
-            
-       
-        
-        
-        
-    

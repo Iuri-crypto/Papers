@@ -34,7 +34,6 @@ class ParallelManager:
                     IndexFeeder,                    # Variável local do loop
                     progreso_dict,                  # Dicionário de progresso (Manager)
                     self.cfg.fd_irrigante,          # Parâmetros técnicos
-                    self.cfg.otimizar,              # Parâmetros técnicos
                     self.cfg.ErroFluxoTolerancia,   # Parâmetros fluxo
                     self.cfg.LoadMult,              # Parâmetros fluxo
                     self.cfg.MmgdMult,              # Parâmetros fluxo
@@ -51,7 +50,9 @@ class ParallelManager:
                     self.cfg.IMaxCenarioDivergencia,  # Filtragem
                     self.cfg.AtivarIrrigantes,
                     self.cfg.PsoOtimizar,
-                    self.cfg.TipoOtimizar,
+                    self.cfg.Cenario,
+                    self.cfg.kwpPackage,
+                    self.cfg.RodarCenarioBase,
                     self.cfg.Oltc,
                     self.cfg.Restricao1,
                     self.cfg.Restricao2,
@@ -71,7 +72,8 @@ class ParallelManager:
                     self.cfg.QuantidadeBkShunt,
                     self.cfg.DistBkShunt,
                     self.cfg.Numsteps,
-                    self.cfg.FatorPotenciaAlvo
+                    self.cfg.FatorPotenciaAlvo,
+                    self.cfg.sobregeracao
                 )
                 
                 

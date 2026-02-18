@@ -5,6 +5,9 @@ import seaborn as sns
 import os
 import re
 from matplotlib.collections import LineCollection
+import polars as pl
+import numpy as np
+import ast
 
 class Plot:
     @staticmethod
@@ -208,5 +211,521 @@ class Plot:
         plt.grid(True, linestyle='--', alpha=0.3)
 
         save_path = os.path.join(save_dir, "MenorCaminhoAteBaricentro.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+
+    @staticmethod
+    def PlotHCTensao(df: pl.DataFrame, subestacao: str, alimentador: str):
+        """
+        Plota as curvas de tensão máxima (Vmax) suavizadas e amarradas à curva base (Inc 0).
+        Elimina gaps e linhas retas noturnas.
+        """
+        # 1. Configuração de Caminhos
+        caminho_script = os.path.dirname(os.path.abspath(__file__))
+        raiz_projeto = os.path.dirname(caminho_script)
+        save_dir = os.path.join(raiz_projeto, "images", subestacao, alimentador, "HC")
+        os.makedirs(save_dir, exist_ok=True)
+
+        # 2. Tratamento Estatístico de Outliers (Z-Score > 1 conforme seu código)
+        df_clean = df.with_columns([
+            pl.col("Vmax").mean().over("Incremento").alias("v_mean_stat"),
+            pl.col("Vmax").std().over("Incremento").alias("v_std_stat")
+        ]).with_columns(
+            pl.when(
+                (pl.col("Vmax") > pl.col("v_mean_stat") + 10 * pl.col("v_std_stat")) |
+                (pl.col("Vmax") < pl.col("v_mean_stat") - 10 * pl.col("v_std_stat"))
+            )
+            .then(pl.col("v_mean_stat"))
+            .otherwise(pl.col("Vmax"))
+            .alias("Vmax_filt")
+        )
+
+        # 3. Dicionário da Curva Base (Incremento 0) para amarração de borda
+        df_base = df_clean.filter(pl.col("Incremento") == 0.0).sort("SimulPoint")
+        dict_base = dict(zip(df_base["SimulPoint"], df_base["Vmax_filt"]))
+
+        # 4. Identificação de Incrementos válidos (< 1.5 pu)
+        limite_filtro = 1.5
+        valid_increments = (
+            df_clean.group_by("Incremento")
+            .agg(pl.col("Vmax_filt").max().alias("max_v"))
+            .filter(pl.col("max_v") < limite_filtro)
+            .sort("Incremento")["Incremento"].to_list()
+        )
+
+        if not valid_increments:
+            return
+
+        # 5. Preparação do Gráfico
+        plt.figure(figsize=(18, 6))
+        colors = plt.cm.turbo(np.linspace(0, 0.9, len(valid_increments)))
+        
+        # 6. Plotagem com Amarração e Suavização
+        for idx, inc in enumerate(valid_increments):
+            df_inc = df_clean.filter(pl.col("Incremento") == inc).sort("SimulPoint")
+            
+            if inc > 0:
+                # Filtra apenas onde houve injeção real de MMGD
+                df_geracao = df_inc.filter(pl.col("PacotesInstalados") > 0)
+                if df_geracao.is_empty(): continue
+
+                p_ini = df_geracao["SimulPoint"].min()
+                p_fim = df_geracao["SimulPoint"].max()
+                
+                # PONTOS DE AMARRAÇÃO: Valor da curva base no início e fim da janela solar
+                transicao_ini = pl.DataFrame({"SimulPoint": [p_ini], "Vmax_filt": [dict_base.get(p_ini)]})
+                transicao_fim = pl.DataFrame({"SimulPoint": [p_fim], "Vmax_filt": [dict_base.get(p_fim)]})
+                
+                # Remove pontos de borda originais para garantir conexão perfeita
+                df_corpo = df_geracao.filter((pl.col("SimulPoint") > p_ini) & (pl.col("SimulPoint") < p_fim))
+                
+                plot_data = pl.concat([
+                    transicao_ini, 
+                    df_corpo.select(["SimulPoint", "Vmax_filt"]), 
+                    transicao_fim
+                ]).sort("SimulPoint")
+            else:
+                plot_data = df_inc
+
+            x = plot_data["SimulPoint"].to_numpy()
+            y = plot_data["Vmax_filt"].to_numpy()
+            
+            # Plotagem por blocos diários para evitar retas na madrugada
+            for start, end in [(0, 96), (96, 192), (192, 288)]:
+                mask = (x >= start) & (x < end)
+                if np.any(mask):
+                    plt.plot(x[mask], y[mask], color=colors[idx], linewidth=1.5, 
+                            label=f"Inc: {inc:.2f}" if (start == 0) else "", zorder=idx)
+            
+            # Rótulo ao final da curva
+            if len(x) > 0:
+                plt.text(x[-1], y[-1], f" {inc:.2f}", fontsize=7, color=colors[idx], 
+                        va='center', ha='left', fontweight='bold')
+
+        # 7. Configuração Visual e Eixo X
+        ticks_3h = np.arange(0, 289, 12)
+        labels_3h = [f"{int((t % 96) / 4):02d}:00" for t in ticks_3h]
+        plt.xticks(ticks_3h, labels_3h, fontsize=8, rotation=45)
+        plt.xlim(0, 315)
+        
+        for vline in [96, 192]:
+            plt.axvline(x=vline, color='black', linestyle='-', alpha=0.1)
+
+        plt.axhline(y=1.05, color='gray', linestyle='-', linewidth=2, alpha=0.5, label="Limite 1.05 pu")
+
+        plt.title(f"HC Vmax Suavizado (Sem Gaps) - SE: {subestacao} | Ali: {alimentador}", loc='left', fontsize=13)
+        plt.xlabel("Tempo (Dia Útil | Sábado | Domingo)")
+        plt.ylabel("Tensão Máxima (pu)")
+        plt.grid(True, linestyle=':', alpha=0.4)
+        plt.legend(loc='upper left', bbox_to_anchor=(1.01, 1), fontsize='small')
+
+        # 8. Salvamento
+        save_path = os.path.join(save_dir, "Evolucao_Tensao_HC_Caso_Base.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        
+        
+    @staticmethod
+    def PlotHCTensaoMedia(df: pl.DataFrame, subestacao: str, alimentador: str):
+        """
+        Plota as curvas de tensão média (Vmean) suavizadas.
+        Elimina gaps e linhas retas noturnas amarrando as curvas à base (Inc 0).
+        """
+        # 1. Configuração de Caminhos
+        caminho_script = os.path.dirname(os.path.abspath(__file__))
+        raiz_projeto = os.path.dirname(caminho_script)
+        save_dir = os.path.join(raiz_projeto, "images", subestacao, alimentador, "HC")
+        os.makedirs(save_dir, exist_ok=True)
+
+        # 2. Tratamento Estatístico de Outliers (Z-Score > 1 conforme solicitado)
+        df_clean = df.with_columns([
+            pl.col("Vmean").mean().over("Incremento").alias("v_mean_avg"),
+            pl.col("Vmean").std().over("Incremento").alias("v_mean_std")
+        ]).with_columns(
+            pl.when(
+                (pl.col("Vmean") > pl.col("v_mean_avg") + 1 * pl.col("v_mean_std")) |
+                (pl.col("Vmean") < pl.col("v_mean_avg") - 1 * pl.col("v_mean_std"))
+            )
+            .then(pl.col("v_mean_avg"))
+            .otherwise(pl.col("Vmean"))
+            .alias("Vmean_filt")
+        )
+
+        # 3. Criar dicionário da Curva Base (Incremento 0) para amarração total
+        df_base = df_clean.filter(pl.col("Incremento") == 0.0).sort("SimulPoint")
+        dict_base = dict(zip(df_base["SimulPoint"], df_base["Vmean_filt"]))
+
+        # 4. Identificação de Incrementos e Preparação do Gráfico
+        valid_increments = df_clean["Incremento"].unique().sort().to_list()
+        plt.figure(figsize=(18, 6))
+        colors = plt.cm.turbo(np.linspace(0, 0.9, len(valid_increments)))
+        
+        # 5. Plotagem com Amarração e Suavização
+        for idx, inc in enumerate(valid_increments):
+            df_inc = df_clean.filter(pl.col("Incremento") == inc).sort("SimulPoint")
+            
+            if inc > 0:
+                # Filtra apenas onde houve injeção real de MMGD
+                df_geracao = df_inc.filter(pl.col("PacotesInstalados") > 0)
+                if df_geracao.is_empty(): continue
+
+                p_ini = df_geracao["SimulPoint"].min()
+                p_fim = df_geracao["SimulPoint"].max()
+                
+                # PONTOS DE AMARRAÇÃO: Valor da curva base no início e fim da janela solar
+                transicao_ini = pl.DataFrame({"SimulPoint": [p_ini], "Vmean_filt": [dict_base.get(p_ini)]})
+                transicao_fim = pl.DataFrame({"SimulPoint": [p_fim], "Vmean_filt": [dict_base.get(p_fim)]})
+                
+                # Remove pontos de borda originais para garantir conexão perfeita
+                df_corpo = df_geracao.filter((pl.col("SimulPoint") > p_ini) & (pl.col("SimulPoint") < p_fim))
+                
+                plot_data = pl.concat([
+                    transicao_ini, 
+                    df_corpo.select(["SimulPoint", "Vmean_filt"]), 
+                    transicao_fim
+                ]).sort("SimulPoint")
+            else:
+                plot_data = df_inc
+
+            x = plot_data["SimulPoint"].to_numpy()
+            y = plot_data["Vmean_filt"].to_numpy()
+            
+            # Plotagem descontínua por dias (Útil, Sábado, Domingo)
+            for start, end in [(0, 96), (96, 192), (192, 288)]:
+                mask = (x >= start) & (x < end)
+                if np.any(mask):
+                    plt.plot(x[mask], y[mask], color=colors[idx], linewidth=1.5, 
+                            label=f"Inc: {inc:.2f}" if (start == 0) else "", zorder=idx)
+            
+            # Rótulo ao final da curva
+            if len(x) > 0:
+                plt.text(x[-1], y[-1], f" {inc:.2f}", fontsize=7, color=colors[idx], 
+                        va='center', ha='left', fontweight='bold')
+
+        # 6. Configuração Visual e Eixos
+        ticks_3h = np.arange(0, 289, 12)
+        labels_3h = [f"{int((t % 96) / 4):02d}:00" for t in ticks_3h]
+        plt.xticks(ticks_3h, labels_3h, fontsize=8, rotation=45)
+        plt.xlim(0, 310)
+        
+        for vline in [96, 192]:
+            plt.axvline(x=vline, color='black', linestyle='-', alpha=0.1)
+
+        plt.title(f"Evolução da Tensão Média Suavizada - SE: {subestacao} | Ali: {alimentador}", loc='left', fontsize=13)
+        plt.ylabel("Vmean (pu)")
+        plt.grid(True, linestyle=':', alpha=0.3)
+        plt.legend(loc='upper left', bbox_to_anchor=(1.01, 1), fontsize='small', title="Incrementos")
+
+        # 7. Salvamento
+        save_path = os.path.join(save_dir, "Evolucao_Tensao_Media_HC_Caso_Base.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        
+
+    @staticmethod
+    def PlotHCPotencia(df: pl.DataFrame, subestacao: str, alimentador: str):
+        # 1. Configuração de Caminhos e Filtro Estatístico
+        caminho_script = os.path.dirname(os.path.abspath(__file__))
+        raiz_projeto = os.path.dirname(caminho_script)
+        save_dir = os.path.join(raiz_projeto, "images", subestacao, alimentador, "HC")
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Filtro Z-Score para remover picos de divergência (image_4ba82b.png)
+        df_clean = df.with_columns([
+            pl.col("PkW").mean().over("Incremento").alias("p_mean"),
+            pl.col("PkW").std().over("Incremento").alias("p_std")
+        ]).with_columns(
+            pl.when(pl.col("PkW").abs() > (pl.col("p_mean").abs() + 3 * pl.col("p_std")))
+            .then(pl.col("p_mean")).otherwise(pl.col("PkW")).alias("P_filt")
+        )
+
+        # 2. Criar dicionário da Curva Base (Incremento 0) para amarração total
+        df_base = df_clean.filter(pl.col("Incremento") == 0.0).sort("SimulPoint")
+        dict_base = dict(zip(df_base["SimulPoint"], df_base["P_filt"]))
+
+        valid_increments = df_clean["Incremento"].unique().sort().to_list()
+        plt.figure(figsize=(18, 6))
+        colors = plt.cm.turbo(np.linspace(0, 0.9, len(valid_increments)))
+        
+        # 3. Plotagem com Amarração de Borda (Eliminação de Gaps)
+        for idx, inc in enumerate(valid_increments):
+            df_inc = df_clean.filter(pl.col("Incremento") == inc).sort("SimulPoint")
+            
+            if inc > 0:
+                # Filtra onde há injeção de MMGD
+                df_geracao = df_inc.filter(pl.col("PacotesInstalados") > 0)
+                if df_geracao.is_empty(): continue
+
+                # Pega o primeiro e último ponto exato da geração solar
+                p_ini = df_geracao["SimulPoint"].min()
+                p_fim = df_geracao["SimulPoint"].max()
+                
+                # CRÍTICO: Cria pontos de conexão usando o valor da linha base NO MESMO PONTO
+                # Isso garante que a linha colorida encoste na preta (image_4f5d85.jpg)
+                transicao_ini = pl.DataFrame({"SimulPoint": [p_ini], "P_filt": [dict_base.get(p_ini)]})
+                transicao_fim = pl.DataFrame({"SimulPoint": [p_fim], "P_filt": [dict_base.get(p_fim)]})
+                
+                # Removemos os pontos originais das bordas para substituir pelos de transição
+                df_corpo = df_geracao.filter((pl.col("SimulPoint") > p_ini) & (pl.col("SimulPoint") < p_fim))
+                
+                plot_data = pl.concat([
+                    transicao_ini, 
+                    df_corpo.select(["SimulPoint", "P_filt"]), 
+                    transicao_fim
+                ]).sort("SimulPoint")
+            else:
+                plot_data = df_inc
+
+            x = plot_data["SimulPoint"].to_numpy()
+            y = plot_data["P_filt"].to_numpy()
+            
+            # Plotagem por blocos diários para evitar retas na madrugada (image_4f52e0.jpg)
+            for start, end in [(0, 96), (96, 192), (192, 288)]:
+                mask = (x >= start) & (x < end)
+                if np.any(mask):
+                    plt.plot(x[mask], y[mask], color=colors[idx], linewidth=1.5, 
+                            label=f"Inc: {inc:.2f}" if (start == 0) else "", zorder=idx)
+
+        # 4. Configurações de Eixo e Salvamento
+        ticks_3h = np.arange(0, 289, 12)
+        labels_3h = [f"{int((t % 96) / 4):02d}:00" for t in ticks_3h]
+        plt.xticks(ticks_3h, labels_3h, fontsize=8, rotation=45)
+        
+        for vline in [96, 192]:
+            plt.axvline(x=vline, color='black', linestyle='-', alpha=0.1)
+
+        plt.title(f"Potência Ativa Suavizada (Sem Gaps) - SE: {subestacao}", loc='left')
+        plt.ylabel("Potência Ativa (kW)")
+        plt.grid(True, linestyle=':', alpha=0.3)
+        plt.legend(loc='upper left', bbox_to_anchor=(1.01, 1), title="Incrementos", fontsize='small')
+
+        plt.savefig(os.path.join(save_dir, "Evolucao_Potencia_HC_Caso_Base.png"), dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        
+        
+
+
+    @staticmethod
+    def PlotHCTapsRegulador(df: pl.DataFrame, subestacao: str, alimentador: str):
+        """
+        Plota todos os reguladores encontrados na coluna 'TapsAVR' em subplots separados.
+        Ajusta dinamicamente os eixos para ocupar todo o espaço útil.
+        """
+        # 1. Configuração de Caminhos
+        caminho_script = os.path.dirname(os.path.abspath(__file__))
+        raiz_projeto = os.path.dirname(caminho_script)
+        save_dir = os.path.join(raiz_projeto, "images", subestacao, alimentador, "HC")
+        os.makedirs(save_dir, exist_ok=True)
+
+        # 2. Identificar todos os nomes de reguladores presentes
+        # Pegamos uma amostra válida para descobrir as chaves do dicionário
+        sample_tap = df.filter(pl.col("TapsAVR").is_not_null())["TapsAVR"][0]
+        if isinstance(sample_tap, str):
+            nomes_reguladores = list(ast.literal_eval(sample_tap).keys())
+        else:
+            nomes_reguladores = list(sample_tap.keys())
+
+        num_regs = len(nomes_reguladores)
+        
+        # 3. Função robusta para extrair o tap de um regulador específico por nome
+        def extrair_tap_por_nome(tap_val, nome):
+            try:
+                dados = ast.literal_eval(tap_val) if isinstance(tap_val, str) else tap_val
+                valor = dados.get(nome, 0)
+                return int(valor[0]) if isinstance(valor, list) else int(valor)
+            except:
+                return 0
+
+        # Criar colunas individuais para cada regulador
+        df_clean = df
+        for nome in nomes_reguladores:
+            df_clean = df_clean.with_columns(
+                pl.col("TapsAVR").map_elements(lambda x: extrair_tap_por_nome(x, nome), 
+                                            return_dtype=pl.Int64).alias(f"Tap_{nome}")
+            )
+
+        # 4. Preparação da Grade de Subplots (n linhas, 1 coluna)
+        fig, axes = plt.subplots(num_regs, 1, figsize=(18, 4 * num_regs), sharex=True)
+        if num_regs == 1: axes = [axes] # Garante que axes seja sempre uma lista
+        
+        valid_increments = df_clean["Incremento"].unique().sort().to_list()
+        colors = plt.cm.turbo(np.linspace(0, 0.9, len(valid_increments)))
+
+        # 5. Plotagem para cada regulador
+        for i, nome in enumerate(nomes_reguladores):
+            ax = axes[i]
+            col_name = f"Tap_{nome}"
+            
+            # Dicionário da Curva Base para suavização deste regulador
+            df_base = df_clean.filter(pl.col("Incremento") == 0.0).sort("SimulPoint")
+            dict_base = dict(zip(df_base["SimulPoint"], df_base[col_name]))
+
+            y_min_total, y_max_total = 0, 0
+
+            for idx, inc in enumerate(valid_increments):
+                df_inc = df_clean.filter(pl.col("Incremento") == inc).sort("SimulPoint")
+                
+                if inc > 0:
+                    df_geracao = df_inc.filter(pl.col("PacotesInstalados") > 0)
+                    if df_geracao.is_empty(): continue
+
+                    p_ini, p_fim = df_geracao["SimulPoint"].min(), df_geracao["SimulPoint"].max()
+                    
+                    transicao_ini = pl.DataFrame({"SimulPoint": [p_ini], col_name: [dict_base.get(p_ini, 0)]})
+                    transicao_fim = pl.DataFrame({"SimulPoint": [p_fim], col_name: [dict_base.get(p_fim, 0)]})
+                    
+                    df_corpo = df_geracao.filter((pl.col("SimulPoint") > p_ini) & (pl.col("SimulPoint") < p_fim))
+                    plot_data = pl.concat([transicao_ini, df_corpo.select(["SimulPoint", col_name]), transicao_fim]).sort("SimulPoint")
+                else:
+                    plot_data = df_inc
+
+                x = plot_data["SimulPoint"].to_numpy()
+                y = plot_data[col_name].to_numpy()
+                
+                # Atualiza limites para o ajuste de escala do eixo
+                y_min_total = min(y_min_total, y.min())
+                y_max_total = max(y_max_total, y.max())
+
+                for start, end in [(0, 96), (96, 192), (192, 288)]:
+                    mask = (x >= start) & (x < end)
+                    if np.any(mask):
+                        ax.plot(x[mask], y[mask], color=colors[idx], linewidth=1.5, 
+                                label=f"Inc: {inc:.2f}" if (start == 0 and i == 0) else "", zorder=idx)
+
+            # 6. Otimização de Espaço (Limites Dinâmicos)
+            # Adiciona apenas 0.5 de margem para o tap encostar no topo/fundo
+            ax.set_ylim(y_min_total - 0.5, y_max_total + 0.5)
+            ax.set_ylabel(f"Tap - {nome}\n(Posição)", fontsize=10)
+            ax.grid(True, linestyle=':', alpha=0.4)
+            ax.set_title(f"Regulador: {nome}", loc='right', fontsize=10, color='gray')
+
+        # 7. Configuração Global (Eixo X comum)
+        ticks_3h = np.arange(0, 289, 12)
+        labels_3h = [f"{int((t % 96) / 4):02d}:00" for t in ticks_3h]
+        plt.xticks(ticks_3h, labels_3h, fontsize=8, rotation=45)
+        plt.xlabel("Tempo (Dia Útil | Sábado | Domingo)")
+        
+        # Legenda única no topo
+        fig.legend(loc='upper center', bbox_to_anchor=(0.5, 1.02), ncol=8, fontsize='small', title="Incrementos de HC")
+        
+        plt.tight_layout(rect=[0, 0, 1, 0.97]) # Ajusta layout para caber a legenda
+        save_path = os.path.join(save_dir, "Evolucao_Taps_Todos_Reguladores.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        
+        
+
+    @staticmethod
+    def PlotHCEstagiosCapacitores(df: pl.DataFrame, subestacao: str, alimentador: str):
+        """
+        Plota todos os bancos de capacitores encontrados na coluna 'EstagiosBkShunt' em subplots.
+        Otimiza o espaço vertical para destacar as mudanças de estágios.
+        """
+        # 1. Configuração de Caminhos
+        caminho_script = os.path.dirname(os.path.abspath(__file__))
+        raiz_projeto = os.path.dirname(caminho_script)
+        save_dir = os.path.join(raiz_projeto, "images", subestacao, alimentador, "HC")
+        os.makedirs(save_dir, exist_ok=True)
+
+        # 2. Identificar nomes dos bancos de capacitores
+        sample_cap = df.filter(pl.col("EstagiosBkShunt").is_not_null())["EstagiosBkShunt"][0]
+        try:
+            nomes_capacitores = list(ast.literal_eval(sample_cap).keys()) if isinstance(sample_cap, str) else list(sample_cap.keys())
+        except:
+            print(f"Aviso: Não foi possível processar capacitores para {alimentador}")
+            return
+
+        num_caps = len(nomes_capacitores)
+        if num_caps == 0: return
+
+        # 3. Função para extrair estágio tratando erros de tipo (List vs Int)
+        def extrair_estagio(cap_val, nome):
+            try:
+                dados = ast.literal_eval(cap_val) if isinstance(cap_val, str) else cap_val
+                valor = dados.get(nome, 0)
+                # Trata o caso de retornar lista [1, 1, 0...] pegando a soma ou o primeiro
+                if isinstance(valor, list):
+                    return int(sum(valor)) # Retorna total de estágios ativos
+                return int(valor)
+            except:
+                return 0
+
+        # Criar colunas individuais
+        df_clean = df
+        for nome in nomes_capacitores:
+            df_clean = df_clean.with_columns(
+                pl.col("EstagiosBkShunt").map_elements(lambda x, n=nome: extrair_estagio(x, n), 
+                                                    return_dtype=pl.Int64).alias(f"Cap_{nome}")
+            )
+
+        # 4. Configuração da Grade
+        fig, axes = plt.subplots(num_caps, 1, figsize=(18, 4 * num_caps), sharex=True)
+        if num_caps == 1: axes = [axes]
+        
+        valid_increments = df_clean["Incremento"].unique().sort().to_list()
+        colors = plt.cm.turbo(np.linspace(0, 0.9, len(valid_increments)))
+
+        # 5. Loop de Plotagem por Banco
+        for i, nome in enumerate(nomes_capacitores):
+            ax = axes[i]
+            col_name = f"Cap_{nome}"
+            
+            df_base = df_clean.filter(pl.col("Incremento") == 0.0).sort("SimulPoint")
+            dict_base = dict(zip(df_base["SimulPoint"], df_base[col_name]))
+
+            y_min_total, y_max_total = 0, 0
+
+            for idx, inc in enumerate(valid_increments):
+                df_inc = df_clean.filter(pl.col("Incremento") == inc).sort("SimulPoint")
+                
+                if inc > 0:
+                    df_geracao = df_inc.filter(pl.col("PacotesInstalados") > 0)
+                    if df_geracao.is_empty(): continue
+
+                    p_ini, p_fim = df_geracao["SimulPoint"].min(), df_geracao["SimulPoint"].max()
+                    
+                    transicao_ini = pl.DataFrame({"SimulPoint": [p_ini], col_name: [dict_base.get(p_ini, 0)]})
+                    transicao_fim = pl.DataFrame({"SimulPoint": [p_fim], col_name: [dict_base.get(p_fim, 0)]})
+                    
+                    df_corpo = df_geracao.filter((pl.col("SimulPoint") > p_ini) & (pl.col("SimulPoint") < p_fim))
+                    plot_data = pl.concat([transicao_ini, df_corpo.select(["SimulPoint", col_name]), transicao_fim]).sort("SimulPoint")
+                else:
+                    plot_data = df_inc
+
+                x = plot_data["SimulPoint"].to_numpy()
+                y = plot_data[col_name].to_numpy()
+                
+                y_min_total = min(y_min_total, y.min())
+                y_max_total = max(y_max_total, y.max())
+
+                for start, end in [(0, 96), (96, 192), (192, 288)]:
+                    mask = (x >= start) & (x < end)
+                    if np.any(mask):
+                        # Drawstyle 'steps-post' é ideal para capacitores (mudanças discretas)
+                        ax.plot(x[mask], y[mask], color=colors[idx], linewidth=1.5, 
+                                drawstyle='steps-post',
+                                label=f"Inc: {inc:.2f}" if (start == 0 and i == 0) else "", zorder=idx)
+
+            # 6. Otimização de Espaço
+            ax.set_ylim(y_min_total - 0.2, y_max_total + 0.2)
+            ax.set_ylabel(f"Estágios - {nome}", fontsize=10)
+            ax.grid(True, linestyle=':', alpha=0.4)
+            ax.set_title(f"Banco de Capacitor: {nome}", loc='right', fontsize=10, color='gray')
+
+        # 7. Finalização
+        ticks_3h = np.arange(0, 289, 12)
+        labels_3h = [f"{int((t % 96) / 4):02d}:00" for t in ticks_3h]
+        plt.xticks(ticks_3h, labels_3h, fontsize=8, rotation=45)
+        plt.xlabel("Tempo (Dia Útil | Sábado | Domingo)")
+        
+        fig.legend(loc='upper center', bbox_to_anchor=(0.5, 1.02), ncol=8, fontsize='small', title="Incrementos de HC")
+        
+        plt.tight_layout(rect=[0, 0, 1, 0.97])
+        save_path = os.path.join(save_dir, "Evolucao_Capacitores_Todos.png")
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
